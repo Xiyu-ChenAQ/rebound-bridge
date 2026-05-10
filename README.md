@@ -2,8 +2,7 @@
 
 Standalone symplectic bridge scheduler for REBOUND.
 
-This directory is intentionally independent from `cs/`.  It only depends on
-the REBOUND C API and can be moved into its own repository or built as a
+It only depends on the REBOUND C API and can be moved into its own repository or built as a
 separate static/shared library later.
 
 ## Layout
