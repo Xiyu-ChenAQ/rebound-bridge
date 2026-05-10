@@ -1,0 +1,10 @@
+build/
+_deps/
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk

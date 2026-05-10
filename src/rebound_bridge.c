@@ -1,0 +1,426 @@
+#include "rebound_bridge.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct reb_bridge_vec3 {
+    double x;
+    double y;
+    double z;
+};
+
+struct reb_bridge_subsystem {
+    struct reb_simulation* sub_sim;
+    int host_index;
+    double dt_inner;
+    int owns_sub_sim;
+};
+
+struct reb_bridge {
+    struct reb_simulation* main_sim;
+    double dt_outer;
+    int owns_main_sim;
+    struct reb_bridge_subsystem* subsystems;
+    int n_subsystems;
+    int cap_subsystems;
+};
+
+static struct reb_bridge_vec3 vec3(double x, double y, double z) {
+    struct reb_bridge_vec3 v;
+    v.x = x;
+    v.y = y;
+    v.z = z;
+    return v;
+}
+
+static struct reb_bridge_vec3 particle_pos(const struct reb_particle* p) {
+    return vec3(p->x, p->y, p->z);
+}
+
+static struct reb_bridge_vec3 vec_add(struct reb_bridge_vec3 a, struct reb_bridge_vec3 b) {
+    return vec3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+static struct reb_bridge_vec3 vec_sub(struct reb_bridge_vec3 a, struct reb_bridge_vec3 b) {
+    return vec3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+static struct reb_bridge_vec3 vec_scale(struct reb_bridge_vec3 v, double s) {
+    return vec3(v.x * s, v.y * s, v.z * s);
+}
+
+static double vec_norm(struct reb_bridge_vec3 v) {
+    return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+static int bridge_error(const char* msg) {
+    fprintf(stderr, "[rebound_bridge] %s\n", msg);
+    return -1;
+}
+
+static int valid_particle_index(const struct reb_simulation* sim, int index) {
+    return sim && index >= 0 && index < sim->N;
+}
+
+static struct reb_bridge_body_state body_state(const struct reb_particle* p) {
+    struct reb_bridge_body_state s;
+    memset(&s, 0, sizeof(s));
+    if (!p) return s;
+    s.x = p->x;
+    s.y = p->y;
+    s.z = p->z;
+    s.vx = p->vx;
+    s.vy = p->vy;
+    s.vz = p->vz;
+    s.m = p->m;
+    return s;
+}
+
+static int subsystem_barycenter(
+    const struct reb_simulation* sim,
+    struct reb_bridge_vec3* out
+) {
+    if (!sim || !out) return bridge_error("subsystem_barycenter received NULL");
+    if (sim->N <= 0) return bridge_error("subsystem has no particles");
+
+    double mt = 0.0;
+    struct reb_bridge_vec3 weighted = vec3(0.0, 0.0, 0.0);
+    for (int i = 0; i < sim->N; i++) {
+        const struct reb_particle* p = &sim->particles[i];
+        mt += p->m;
+        weighted = vec_add(weighted, vec_scale(particle_pos(p), p->m));
+    }
+    if (mt <= 0.0) return bridge_error("subsystem total mass must be positive");
+
+    *out = vec_scale(weighted, 1.0 / mt);
+    return 0;
+}
+
+static struct reb_bridge_vec3 gravity_from_source(
+    struct reb_bridge_vec3 pos,
+    const struct reb_particle* source,
+    double G
+) {
+    struct reb_bridge_vec3 r = vec_sub(pos, particle_pos(source));
+    double rnorm = vec_norm(r);
+    double inv_r3 = 1.0 / (rnorm * rnorm * rnorm);
+    return vec_scale(r, -G * source->m * inv_r3);
+}
+
+struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_outer) {
+    if (!main_sim) {
+        bridge_error("main_sim is NULL");
+        return NULL;
+    }
+    if (dt_outer <= 0.0) {
+        bridge_error("dt_outer must be positive");
+        return NULL;
+    }
+
+    struct reb_bridge* bridge = (struct reb_bridge*)calloc(1, sizeof(*bridge));
+    if (!bridge) {
+        bridge_error("out of memory");
+        return NULL;
+    }
+
+    bridge->main_sim = main_sim;
+    bridge->dt_outer = dt_outer;
+    bridge->owns_main_sim = 0;
+    bridge->main_sim->dt = dt_outer;
+    return bridge;
+}
+
+void reb_bridge_set_owns_main(struct reb_bridge* bridge, int owns_main_sim) {
+    if (!bridge) return;
+    bridge->owns_main_sim = owns_main_sim ? 1 : 0;
+}
+
+void reb_bridge_free(struct reb_bridge* bridge) {
+    if (!bridge) return;
+    for (int i = 0; i < bridge->n_subsystems; i++) {
+        if (bridge->subsystems[i].owns_sub_sim && bridge->subsystems[i].sub_sim) {
+            reb_simulation_free(bridge->subsystems[i].sub_sim);
+        }
+    }
+    free(bridge->subsystems);
+    if (bridge->owns_main_sim && bridge->main_sim) {
+        reb_simulation_free(bridge->main_sim);
+    }
+    free(bridge);
+}
+
+int reb_bridge_add_subsystem(
+    struct reb_bridge* bridge,
+    int host_index,
+    struct reb_simulation* sub_sim,
+    double dt_inner,
+    int owns_sub_sim
+) {
+    if (!bridge) return bridge_error("bridge is NULL");
+    if (!sub_sim) return bridge_error("sub_sim is NULL");
+    if (!valid_particle_index(bridge->main_sim, host_index)) {
+        return bridge_error("host_index is out of bounds");
+    }
+    if (sub_sim->N <= 0) return bridge_error("sub_sim has no particles");
+    if (dt_inner <= 0.0) return bridge_error("dt_inner must be positive");
+    if (dt_inner > bridge->dt_outer) return bridge_error("dt_inner must be <= dt_outer");
+
+    double ratio = bridge->dt_outer / dt_inner;
+    if (fabs(ratio - round(ratio)) > 1.0e-12) {
+        return bridge_error("dt_outer/dt_inner must be an integer ratio");
+    }
+
+    if (bridge->n_subsystems == bridge->cap_subsystems) {
+        int new_cap = bridge->cap_subsystems == 0 ? 4 : bridge->cap_subsystems * 2;
+        struct reb_bridge_subsystem* new_subsystems =
+            (struct reb_bridge_subsystem*)realloc(
+                bridge->subsystems,
+                sizeof(*new_subsystems) * (size_t)new_cap
+            );
+        if (!new_subsystems) return bridge_error("out of memory");
+        bridge->subsystems = new_subsystems;
+        bridge->cap_subsystems = new_cap;
+    }
+
+    sub_sim->dt = dt_inner;
+    struct reb_bridge_subsystem* sub = &bridge->subsystems[bridge->n_subsystems++];
+    sub->sub_sim = sub_sim;
+    sub->host_index = host_index;
+    sub->dt_inner = dt_inner;
+    sub->owns_sub_sim = owns_sub_sim ? 1 : 0;
+    return 0;
+}
+
+int reb_bridge_subsystem_count(const struct reb_bridge* bridge) {
+    return bridge ? bridge->n_subsystems : 0;
+}
+
+struct reb_simulation* reb_bridge_main_sim(struct reb_bridge* bridge) {
+    return bridge ? bridge->main_sim : NULL;
+}
+
+struct reb_simulation* reb_bridge_sub_sim(struct reb_bridge* bridge, int subsystem_index) {
+    if (!bridge || subsystem_index < 0 || subsystem_index >= bridge->n_subsystems) return NULL;
+    return bridge->subsystems[subsystem_index].sub_sim;
+}
+
+static int apply_subsystem_cross_kick(
+    struct reb_bridge* bridge,
+    struct reb_bridge_subsystem* sub,
+    double dt_kick
+) {
+    struct reb_simulation* main_sim = bridge->main_sim;
+    struct reb_simulation* sub_sim = sub->sub_sim;
+    if (!valid_particle_index(main_sim, sub->host_index)) {
+        return bridge_error("host_index is out of bounds during kick");
+    }
+    if (fabs(main_sim->t - sub_sim->t) > 1.0e-12) {
+        return bridge_error("main and subsystem times are out of sync");
+    }
+
+    const int n = sub_sim->N;
+    struct reb_bridge_vec3 bc;
+    if (subsystem_barycenter(sub_sim, &bc) != 0) return -1;
+
+    struct reb_bridge_vec3* acc =
+        (struct reb_bridge_vec3*)calloc((size_t)n, sizeof(*acc));
+    if (!acc) return bridge_error("out of memory");
+
+    const struct reb_particle* host = &main_sim->particles[sub->host_index];
+    struct reb_bridge_vec3 host_pos = particle_pos(host);
+    struct reb_bridge_vec3 bc_global = vec_add(host_pos, bc);
+    const double G = main_sim->G;
+
+    for (int source_index = 0; source_index < main_sim->N; source_index++) {
+        if (source_index == sub->host_index) continue;
+        const struct reb_particle* source = &main_sim->particles[source_index];
+        if (source->m == 0.0) continue;
+
+        struct reb_bridge_vec3 a_bc = gravity_from_source(bc_global, source, G);
+        for (int i = 0; i < n; i++) {
+            struct reb_bridge_vec3 global_pos =
+                vec_add(host_pos, particle_pos(&sub_sim->particles[i]));
+            struct reb_bridge_vec3 a_full = gravity_from_source(global_pos, source, G);
+            acc[i] = vec_add(acc[i], vec_sub(a_full, a_bc));
+        }
+    }
+
+    double mt = 0.0;
+    struct reb_bridge_vec3 backreaction = vec3(0.0, 0.0, 0.0);
+    for (int i = 0; i < n; i++) {
+        struct reb_particle* p = &sub_sim->particles[i];
+        mt += p->m;
+        backreaction = vec_add(backreaction, vec_scale(acc[i], p->m));
+    }
+    if (mt <= 0.0) {
+        free(acc);
+        return bridge_error("subsystem total mass must be positive");
+    }
+
+    for (int i = 0; i < n; i++) {
+        struct reb_particle* p = &sub_sim->particles[i];
+        p->vx += acc[i].x * dt_kick;
+        p->vy += acc[i].y * dt_kick;
+        p->vz += acc[i].z * dt_kick;
+    }
+
+    struct reb_particle* host_mut = &main_sim->particles[sub->host_index];
+    struct reb_bridge_vec3 a_host = vec_scale(backreaction, -1.0 / mt);
+    host_mut->vx += a_host.x * dt_kick;
+    host_mut->vy += a_host.y * dt_kick;
+    host_mut->vz += a_host.z * dt_kick;
+
+    free(acc);
+    reb_simulation_synchronize(sub_sim);
+    reb_simulation_synchronize(main_sim);
+    return 0;
+}
+
+int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick) {
+    if (!bridge) return bridge_error("bridge is NULL");
+    for (int i = 0; i < bridge->n_subsystems; i++) {
+        if (apply_subsystem_cross_kick(bridge, &bridge->subsystems[i], dt_kick) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int reb_bridge_step(struct reb_bridge* bridge, double dt) {
+    if (!bridge) return bridge_error("bridge is NULL");
+    if (dt <= 0.0) return bridge_error("dt must be positive");
+
+    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
+
+    const double target = bridge->main_sim->t + dt;
+    for (int i = 0; i < bridge->n_subsystems; i++) {
+        enum REB_STATUS status = reb_simulation_integrate(bridge->subsystems[i].sub_sim, target);
+        if (status != REB_STATUS_SUCCESS) return bridge_error("subsystem integration failed");
+    }
+
+    enum REB_STATUS main_status = reb_simulation_integrate(bridge->main_sim, target);
+    if (main_status != REB_STATUS_SUCCESS) return bridge_error("main integration failed");
+
+    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
+    return 0;
+}
+
+int reb_bridge_advance(struct reb_bridge* bridge, double duration) {
+    if (!bridge) return bridge_error("bridge is NULL");
+    if (duration < 0.0) return bridge_error("duration must be non-negative");
+
+    const double target = bridge->main_sim->t + duration;
+    while (bridge->main_sim->t < target - 1.0e-14) {
+        double dt = target - bridge->main_sim->t;
+        if (dt > bridge->dt_outer) dt = bridge->dt_outer;
+        if (reb_bridge_step(bridge, dt) != 0) return -1;
+    }
+    return 0;
+}
+
+int reb_bridge_snapshot(
+    const struct reb_bridge* bridge,
+    int subsystem_index,
+    struct reb_bridge_snapshot* out
+) {
+    if (!bridge || !out) return bridge_error("snapshot received NULL");
+    if (subsystem_index < 0 || subsystem_index >= bridge->n_subsystems) {
+        return bridge_error("subsystem_index is out of bounds");
+    }
+
+    const struct reb_bridge_subsystem* sub = &bridge->subsystems[subsystem_index];
+    const struct reb_simulation* main_sim = bridge->main_sim;
+    const struct reb_simulation* sub_sim = sub->sub_sim;
+    if (!valid_particle_index(main_sim, sub->host_index)) {
+        return bridge_error("host_index is out of bounds during snapshot");
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->time = main_sim->t;
+    out->host_index = sub->host_index;
+    out->member_count = sub_sim->N;
+    out->host = body_state(&main_sim->particles[sub->host_index]);
+
+    if (main_sim->N > 0 && sub->host_index != 0) {
+        out->host_primary_distance = vec_norm(vec_sub(
+            particle_pos(&main_sim->particles[sub->host_index]),
+            particle_pos(&main_sim->particles[0])
+        ));
+    }
+
+    struct reb_bridge_vec3 bc;
+    if (subsystem_barycenter(sub_sim, &bc) != 0) return -1;
+    out->subsystem_barycenter_distance = vec_norm(bc);
+
+    if (sub_sim->N > 0) {
+        out->member0 = body_state(&sub_sim->particles[0]);
+    }
+    if (sub_sim->N > 1) {
+        out->member1 = body_state(&sub_sim->particles[1]);
+        out->subsystem_internal_distance = vec_norm(vec_sub(
+            particle_pos(&sub_sim->particles[0]),
+            particle_pos(&sub_sim->particles[1])
+        ));
+    }
+
+    return 0;
+}
+
+struct reb_simulation* reb_bridge_make_main_sun_emb(void) {
+    struct reb_simulation* sim = reb_simulation_create();
+    if (!sim) return NULL;
+    sim->G = REB_BRIDGE_G_AU_YR_MSUN;
+    sim->integrator = REB_INTEGRATOR_WHFAST;
+    sim->ri_whfast.safe_mode = 1;
+
+    reb_simulation_add_fmt(sim, "m", 1.0);
+    reb_simulation_add_fmt(sim, "m a e", 3.0e-6, 1.0, 0.0);
+    reb_simulation_move_to_com(sim);
+    return sim;
+}
+
+struct reb_simulation* reb_bridge_make_sub_earth_moon(void) {
+    struct reb_simulation* sim = reb_simulation_create();
+    if (!sim) return NULL;
+    sim->G = REB_BRIDGE_G_AU_YR_MSUN;
+    sim->integrator = REB_INTEGRATOR_WHFAST;
+    sim->ri_whfast.safe_mode = 1;
+
+    const double m_earth = 3.0e-6 * 0.987;
+    const double m_moon = 3.0e-6 * 0.013;
+    reb_simulation_add_fmt(sim, "m", m_earth);
+    reb_simulation_add_fmt(sim, "m a e", m_moon, 0.00257, 0.0);
+    reb_simulation_move_to_com(sim);
+    return sim;
+}
+
+struct reb_bridge* reb_bridge_create_earth_moon(double dt_outer, int sub_ratio) {
+    if (sub_ratio <= 0) {
+        bridge_error("sub_ratio must be positive");
+        return NULL;
+    }
+
+    struct reb_simulation* main_sim = reb_bridge_make_main_sun_emb();
+    struct reb_simulation* sub_sim = reb_bridge_make_sub_earth_moon();
+    if (!main_sim || !sub_sim) {
+        if (main_sim) reb_simulation_free(main_sim);
+        if (sub_sim) reb_simulation_free(sub_sim);
+        return NULL;
+    }
+
+    struct reb_bridge* bridge = reb_bridge_create(main_sim, dt_outer);
+    if (!bridge) {
+        reb_simulation_free(main_sim);
+        reb_simulation_free(sub_sim);
+        return NULL;
+    }
+
+    reb_bridge_set_owns_main(bridge, 1);
+    if (reb_bridge_add_subsystem(bridge, 1, sub_sim, dt_outer / (double)sub_ratio, 1) != 0) {
+        reb_bridge_free(bridge);
+        return NULL;
+    }
+    return bridge;
+}
