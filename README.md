@@ -58,6 +58,29 @@ plumbing for solar-system-scale sandbox simulations. The example uses a larger
 outer timestep for planetary motion and smaller inner timesteps for the resolved
 moon subsystems.
 
+## CMake Build
+
+Configure with a REBOUND C source tree:
+
+```powershell
+cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
+cmake --build build --config Release
+```
+
+If `_deps/rebound-upstream/src` exists, CMake uses it as the default
+`REBOUND_SRC_DIR`.
+
+Disable examples when building only the library:
+
+```powershell
+cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src" -DREBOUND_BRIDGE_BUILD_EXAMPLES=OFF
+cmake --build build --config Release
+```
+
+The CMake build creates static `rebound` and `rebound_bridge` targets. Link
+downstream CMake code against `rebound_bridge::rebound_bridge` when consuming an
+installed package export.
+
 Example MSVC build from this directory:
 
 ```powershell

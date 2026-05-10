@@ -1,0 +1,5 @@
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/rebound_bridgeTargets.cmake")
+
+check_required_components(rebound_bridge)
