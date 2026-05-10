@@ -30,6 +30,32 @@ subsystem simulations.
 The Earth-Moon helpers are examples only.  The core API works with any
 `host_index + sub_sim` pair.
 
+## Validation Notes
+
+`rebound_bridge` is a scheduler around REBOUND simulations, not a standalone
+replacement integrator.  A typical configuration uses WHFast inside the main
+simulation and inside each subsystem, while the bridge supplies the symmetric
+KDK coupling between subsystem barycenters and resolved subsystem bodies.
+
+The current validation focus is long-term structural behavior:
+
+- Forward-then-backward integrations return close to the initial state, which
+  checks the time symmetry of the bridge composition.
+- Earth-Moon convergence tests show the expected second-order trend when
+  reducing `dt_outer`.
+- Energy errors are observed as bounded oscillations rather than monotonic
+  drift in the tested Earth-Moon setup.
+- Long runs require backreaction from subsystem kicks to the host particle;
+  one-way coupling produces unacceptable momentum drift.
+- IAS15 runs are used as reference trajectories for measuring residuals and
+  phase error over finite spans, not as the design target of the bridge method.
+
+`dt_outer` controls how often main and subsystem simulations exchange
+perturbations.  `dt_inner` controls the internal REBOUND integration of each
+subsystem.  Once the subsystem is internally resolved, reducing `dt_inner`
+further will not remove bridge coupling error; reducing `dt_outer` is then the
+relevant accuracy knob.
+
 ## Minimal Use
 
 ```c
