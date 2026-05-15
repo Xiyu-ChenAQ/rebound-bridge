@@ -11,6 +11,7 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(REBOUND_BRIDGE_BUILD_EXAMPLES "Build rebound_bridge example programs" ON)
+option(REBOUND_BRIDGE_BUILD_VALIDATION "Build validation comparison tools" ON)
 option(REBOUND_BRIDGE_INSTALL "Install rebound_bridge targets and headers" ON)
 
 set(_rebound_bridge_default_rebound_src "")
@@ -88,6 +89,14 @@ if(REBOUND_BRIDGE_BUILD_EXAMPLES)
         add_executable(${_example} "examples/${_example}.c")
         target_link_libraries(${_example} PRIVATE rebound_bridge::rebound_bridge)
     endforeach()
+endif()
+
+if(REBOUND_BRIDGE_BUILD_VALIDATION)
+    add_executable(
+        solar_system_ias15_compare
+        validation/solar_system_ias15/compare_solar_system_ias15.c
+    )
+    target_link_libraries(solar_system_ias15_compare PRIVATE rebound_bridge::rebound_bridge)
 endif()
 
 if(REBOUND_BRIDGE_INSTALL)

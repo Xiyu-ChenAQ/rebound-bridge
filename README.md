@@ -84,6 +84,19 @@ plumbing for solar-system-scale sandbox simulations. The example uses a larger
 outer timestep for planetary motion and smaller inner timesteps for the resolved
 moon subsystems.
 
+## Validation Suite
+
+`validation/solar_system_ias15/` contains a standalone bridge-vs-IAS15
+comparison workflow for the solar-system setup. The default workflow now runs
+a 2000-year long-term stability check.
+
+- `compare_solar_system_ias15.c` runs both the bridge and a direct IAS15
+  reference from the same initial conditions and writes a CSV of diagnostics.
+- `plot_solar_system_ias15.py` renders energy, angular-momentum, distance, and
+  phase/residual plots plus long-run stability and envelope plots from that CSV.
+- `run.ps1` builds the validation target, runs the 2000-year comparison, and
+  generates the figures in `validation/solar_system_ias15/out/`.
+
 ## CMake Build
 
 Configure with a REBOUND C source tree:
