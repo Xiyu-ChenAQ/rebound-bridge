@@ -81,6 +81,13 @@ static double wrap_degrees(double angle) {
     return angle;
 }
 
+static double centered_delta_degrees(double a, double b) {
+    double delta = a - b;
+    while (delta <= -180.0) delta += 360.0;
+    while (delta > 180.0) delta -= 360.0;
+    return delta;
+}
+
 static double distance_particles(const struct reb_particle* a, const struct reb_particle* b) {
     const double dx = a->x - b->x;
     const double dy = a->y - b->y;
@@ -435,6 +442,14 @@ static double laplace_angle_from_bodies(const struct reb_particle bodies[BODY_CO
     return wrap_degrees((io.l - 3.0 * europa.l + 2.0 * ganymede.l) * 180.0 / M_PI);
 }
 
+static double heliocentric_radius(const struct reb_particle* body, const struct reb_particle* sun) {
+    return distance_particles(body, sun);
+}
+
+static double heliocentric_phase_degrees(const struct reb_particle* body, const struct reb_particle* sun) {
+    return wrap_degrees(atan2(body->y - sun->y, body->x - sun->x) * 180.0 / M_PI);
+}
+
 static void write_csv_header(FILE* fp) {
     fprintf(fp,
         "time_yr,"
@@ -442,7 +457,9 @@ static void write_csv_header(FILE* fp) {
         "bridge_l_rel,ias15_l_rel,l_rel_diff,"
         "bridge_em_distance_au,ias15_em_distance_au,em_distance_diff_au,"
         "bridge_laplace_deg,ias15_laplace_deg,laplace_diff_deg,"
-        "earth_barycenter_error_au,jupiter_barycenter_error_au\n"
+        "earth_barycenter_error_au,jupiter_barycenter_error_au,"
+        "earth_phase_diff_deg,jupiter_phase_diff_deg,"
+        "earth_radius_diff_au,jupiter_radius_diff_au\n"
     );
 }
 
@@ -458,10 +475,14 @@ static void write_csv_row(
     double bridge_laplace_deg,
     double ias15_laplace_deg,
     double earth_barycenter_error_au,
-    double jupiter_barycenter_error_au
+    double jupiter_barycenter_error_au,
+    double earth_phase_diff_deg,
+    double jupiter_phase_diff_deg,
+    double earth_radius_diff_au,
+    double jupiter_radius_diff_au
 ) {
     fprintf(fp,
-        "%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e\n",
+        "%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e\n",
         time_yr,
         bridge_energy_rel,
         ias15_energy_rel,
@@ -476,7 +497,11 @@ static void write_csv_row(
         ias15_laplace_deg,
         bridge_laplace_deg - ias15_laplace_deg,
         earth_barycenter_error_au,
-        jupiter_barycenter_error_au
+        jupiter_barycenter_error_au,
+        earth_phase_diff_deg,
+        jupiter_phase_diff_deg,
+        earth_radius_diff_au,
+        jupiter_radius_diff_au
     );
 }
 
@@ -499,12 +524,13 @@ static int parse_int_value(const char* text, int* out) {
 }
 
 static void print_usage(const char* argv0) {
-    fprintf(stderr, "usage: %s [--years N] [--samples N]\n", argv0);
+    fprintf(stderr, "usage: %s [--years N] [--samples N] [--dt-outer-days N]\n", argv0);
 }
 
 int main(int argc, char** argv) {
     double years = 2000.0;
     int samples = 2000;
+    double dt_outer_days = 1.0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--years") == 0) {
             if (i + 1 >= argc || parse_double_value(argv[++i], &years) != 0 || years <= 0.0) {
@@ -516,13 +542,18 @@ int main(int argc, char** argv) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
+        } else if (strcmp(argv[i], "--dt-outer-days") == 0) {
+            if (i + 1 >= argc || parse_double_value(argv[++i], &dt_outer_days) != 0 || dt_outer_days <= 0.0) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
         } else {
             print_usage(argv[0]);
             return EXIT_FAILURE;
         }
     }
 
-    const double dt_outer = 1.0 / 365.25;
+    const double dt_outer = dt_outer_days / 365.25;
     const double dt_earth_moon = dt_outer / 20.0;
     const double dt_jovian = dt_outer / 50.0;
     const char* out_path = "validation/solar_system_ias15/out/solar_system_ias15_compare.csv";
@@ -613,6 +644,20 @@ int main(int argc, char** argv) {
             &bridge_state.main_sim->particles[MAIN_JUPITER_HOST],
             &ias15_metrics.jovian_barycenter
         );
+        const double earth_phase_diff_deg = centered_delta_degrees(
+            heliocentric_phase_degrees(&bridge_metrics.earth_moon_barycenter, &bridge_bodies[BODY_SUN]),
+            heliocentric_phase_degrees(&ias15_metrics.earth_moon_barycenter, &ias15_bodies[BODY_SUN])
+        );
+        const double jupiter_phase_diff_deg = centered_delta_degrees(
+            heliocentric_phase_degrees(&bridge_metrics.jovian_barycenter, &bridge_bodies[BODY_SUN]),
+            heliocentric_phase_degrees(&ias15_metrics.jovian_barycenter, &ias15_bodies[BODY_SUN])
+        );
+        const double earth_radius_diff_au =
+            heliocentric_radius(&bridge_metrics.earth_moon_barycenter, &bridge_bodies[BODY_SUN]) -
+            heliocentric_radius(&ias15_metrics.earth_moon_barycenter, &ias15_bodies[BODY_SUN]);
+        const double jupiter_radius_diff_au =
+            heliocentric_radius(&bridge_metrics.jovian_barycenter, &bridge_bodies[BODY_SUN]) -
+            heliocentric_radius(&ias15_metrics.jovian_barycenter, &ias15_bodies[BODY_SUN]);
 
         write_csv_row(
             fp,
@@ -626,7 +671,11 @@ int main(int argc, char** argv) {
             bridge_laplace_deg,
             ias15_laplace_deg,
             earth_barycenter_error_au,
-            jupiter_barycenter_error_au
+            jupiter_barycenter_error_au,
+            earth_phase_diff_deg,
+            jupiter_phase_diff_deg,
+            earth_radius_diff_au,
+            jupiter_radius_diff_au
         );
     }
 

@@ -109,6 +109,18 @@ static struct reb_bridge_vec3 gravity_from_source(
     return vec_scale(r, -G * source->m * inv_r3);
 }
 
+static struct reb_bridge_vec3 gravity_from_point_mass(
+    struct reb_bridge_vec3 pos,
+    struct reb_bridge_vec3 source_pos,
+    double source_mass,
+    double G
+) {
+    struct reb_bridge_vec3 r = vec_sub(pos, source_pos);
+    double rnorm = vec_norm(r);
+    double inv_r3 = 1.0 / (rnorm * rnorm * rnorm);
+    return vec_scale(r, -G * source_mass * inv_r3);
+}
+
 struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_outer) {
     if (!main_sim) {
         bridge_error("main_sim is NULL");
@@ -224,55 +236,92 @@ static int apply_subsystem_cross_kick(
     struct reb_bridge_vec3 bc;
     if (subsystem_barycenter(sub_sim, &bc) != 0) return -1;
 
-    struct reb_bridge_vec3* acc =
-        (struct reb_bridge_vec3*)calloc((size_t)n, sizeof(*acc));
-    if (!acc) return bridge_error("out of memory");
+    struct reb_bridge_vec3* internal_acc =
+        (struct reb_bridge_vec3*)calloc((size_t)n, sizeof(*internal_acc));
+    struct reb_bridge_vec3* source_acc =
+        (struct reb_bridge_vec3*)calloc((size_t)n, sizeof(*source_acc));
+    struct reb_bridge_vec3* main_acc =
+        (struct reb_bridge_vec3*)calloc((size_t)main_sim->N, sizeof(*main_acc));
+    if (!internal_acc || !source_acc || !main_acc) {
+        free(internal_acc);
+        free(source_acc);
+        free(main_acc);
+        return bridge_error("out of memory");
+    }
 
     const struct reb_particle* host = &main_sim->particles[sub->host_index];
     struct reb_bridge_vec3 host_pos = particle_pos(host);
     struct reb_bridge_vec3 bc_global = vec_add(host_pos, bc);
     const double G = main_sim->G;
+    double mt = 0.0;
+    for (int i = 0; i < n; i++) {
+        mt += sub_sim->particles[i].m;
+    }
+    if (mt <= 0.0) {
+        free(internal_acc);
+        free(source_acc);
+        free(main_acc);
+        return bridge_error("subsystem total mass must be positive");
+    }
+
+    struct reb_bridge_vec3 host_acc = vec3(0.0, 0.0, 0.0);
 
     for (int source_index = 0; source_index < main_sim->N; source_index++) {
         if (source_index == sub->host_index) continue;
         const struct reb_particle* source = &main_sim->particles[source_index];
         if (source->m == 0.0) continue;
 
-        struct reb_bridge_vec3 a_bc = gravity_from_source(bc_global, source, G);
+        struct reb_bridge_vec3 a_mono_on_com = gravity_from_source(bc_global, source, G);
+        struct reb_bridge_vec3 a_com_full = vec3(0.0, 0.0, 0.0);
+        struct reb_bridge_vec3 source_pos = particle_pos(source);
+        struct reb_bridge_vec3 a_source_full = vec3(0.0, 0.0, 0.0);
         for (int i = 0; i < n; i++) {
+            const struct reb_particle* member = &sub_sim->particles[i];
             struct reb_bridge_vec3 global_pos =
-                vec_add(host_pos, particle_pos(&sub_sim->particles[i]));
-            struct reb_bridge_vec3 a_full = gravity_from_source(global_pos, source, G);
-            acc[i] = vec_add(acc[i], vec_sub(a_full, a_bc));
+                vec_add(host_pos, particle_pos(member));
+            source_acc[i] = gravity_from_source(global_pos, source, G);
+            a_com_full = vec_add(a_com_full, vec_scale(source_acc[i], member->m));
+            a_source_full = vec_add(
+                a_source_full,
+                gravity_from_point_mass(source_pos, global_pos, member->m, G)
+            );
         }
+
+        a_com_full = vec_scale(a_com_full, 1.0 / mt);
+        host_acc = vec_add(host_acc, vec_sub(a_com_full, a_mono_on_com));
+
+        for (int i = 0; i < n; i++) {
+            internal_acc[i] = vec_add(internal_acc[i], vec_sub(source_acc[i], a_com_full));
+        }
+
+        struct reb_bridge_vec3 a_source_mono =
+            gravity_from_point_mass(source_pos, bc_global, mt, G);
+        main_acc[source_index] = vec_add(main_acc[source_index], vec_sub(a_source_full, a_source_mono));
     }
 
-    double mt = 0.0;
-    struct reb_bridge_vec3 backreaction = vec3(0.0, 0.0, 0.0);
     for (int i = 0; i < n; i++) {
         struct reb_particle* p = &sub_sim->particles[i];
-        mt += p->m;
-        backreaction = vec_add(backreaction, vec_scale(acc[i], p->m));
-    }
-    if (mt <= 0.0) {
-        free(acc);
-        return bridge_error("subsystem total mass must be positive");
-    }
-
-    for (int i = 0; i < n; i++) {
-        struct reb_particle* p = &sub_sim->particles[i];
-        p->vx += acc[i].x * dt_kick;
-        p->vy += acc[i].y * dt_kick;
-        p->vz += acc[i].z * dt_kick;
+        p->vx += internal_acc[i].x * dt_kick;
+        p->vy += internal_acc[i].y * dt_kick;
+        p->vz += internal_acc[i].z * dt_kick;
     }
 
     struct reb_particle* host_mut = &main_sim->particles[sub->host_index];
-    struct reb_bridge_vec3 a_host = vec_scale(backreaction, -1.0 / mt);
-    host_mut->vx += a_host.x * dt_kick;
-    host_mut->vy += a_host.y * dt_kick;
-    host_mut->vz += a_host.z * dt_kick;
+    host_mut->vx += host_acc.x * dt_kick;
+    host_mut->vy += host_acc.y * dt_kick;
+    host_mut->vz += host_acc.z * dt_kick;
 
-    free(acc);
+    for (int source_index = 0; source_index < main_sim->N; source_index++) {
+        if (source_index == sub->host_index) continue;
+        struct reb_particle* source = &main_sim->particles[source_index];
+        source->vx += main_acc[source_index].x * dt_kick;
+        source->vy += main_acc[source_index].y * dt_kick;
+        source->vz += main_acc[source_index].z * dt_kick;
+    }
+
+    free(internal_acc);
+    free(source_acc);
+    free(main_acc);
     reb_simulation_synchronize(sub_sim);
     reb_simulation_synchronize(main_sim);
     return 0;

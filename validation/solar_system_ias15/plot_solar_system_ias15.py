@@ -39,6 +39,23 @@ def running_abs_max(series, floor=1e-300):
     return out
 
 
+def unwrap_degrees(series):
+    if not series:
+        return []
+    out = [series[0]]
+    offset = 0.0
+    previous = series[0]
+    for value in series[1:]:
+        delta = value - previous
+        if delta > 180.0:
+            offset -= 360.0
+        elif delta < -180.0:
+            offset += 360.0
+        out.append(value + offset)
+        previous = value
+    return out
+
+
 def plot_metrics(data, outdir):
     t = data["time_yr"]
 
@@ -107,86 +124,91 @@ def plot_residuals(data, outdir):
     save_fig(fig, outdir / "bridge_vs_ias15_residuals.png")
 
 
-def plot_host_errors(data, outdir):
-    t = data["time_yr"]
-
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-    ax = axes[0]
-    ax.semilogy(t, data["earth_barycenter_error_au"], color="tab:orange")
-    ax.set_ylabel("Earth-Moon host error [AU]")
-    ax.grid(True, which="both", alpha=0.25)
-
-    ax = axes[1]
-    ax.semilogy(t, data["jupiter_barycenter_error_au"], color="tab:brown")
-    ax.set_ylabel("Jupiter host error [AU]")
-    ax.set_xlabel("Time [yr]")
-    ax.grid(True, which="both", alpha=0.25)
-
-    save_fig(fig, outdir / "bridge_host_errors.png")
-
-
-def plot_long_term_stability(data, outdir):
+def plot_orbital_residuals(data, outdir):
     t = data["time_yr"]
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
     ax = axes[0]
+    ax.plot(t, data["earth_phase_diff_deg"], color="tab:orange")
+    ax.axhline(0.0, color="0.3", lw=0.8)
+    ax.set_ylabel("Earth phase diff [deg]")
+    ax.grid(True, alpha=0.25)
+
+    ax = axes[1]
+    ax.plot(t, data["earth_radius_diff_au"], color="tab:green")
+    ax.axhline(0.0, color="0.3", lw=0.8)
+    ax.set_ylabel("Earth radius diff [AU]")
+    ax.grid(True, alpha=0.25)
+
+    ax = axes[2]
+    ax.plot(t, data["jupiter_phase_diff_deg"], color="tab:brown")
+    ax.axhline(0.0, color="0.3", lw=0.8)
+    ax.set_ylabel("Jupiter phase diff [deg]")
+    ax.grid(True, alpha=0.25)
+
+    ax = axes[3]
+    ax.plot(t, data["jupiter_radius_diff_au"], color="tab:purple")
+    ax.axhline(0.0, color="0.3", lw=0.8)
+    ax.set_ylabel("Jupiter radius diff [AU]")
+    ax.set_xlabel("Time [yr]")
+    ax.grid(True, alpha=0.25)
+
+    save_fig(fig, outdir / "bridge_vs_ias15_orbital_residuals.png")
+
+
+def plot_long_term_stability(data, outdir):
+    t = data["time_yr"]
+    bridge_laplace = unwrap_degrees(data["bridge_laplace_deg"])
+    bridge_laplace_shift = [value - bridge_laplace[0] for value in bridge_laplace]
+    bridge_em_distance = data["bridge_em_distance_au"]
+    bridge_em_distance_shift = [value - bridge_em_distance[0] for value in bridge_em_distance]
+
+    fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
+    ax = axes[0]
     ax.semilogy(t, abs_floor(data["bridge_energy_rel"]), label="Bridge")
-    ax.semilogy(t, abs_floor(data["ias15_energy_rel"]), label="IAS15")
     ax.set_ylabel("|dE/E0|")
-    ax.legend(loc="upper left")
     ax.grid(True, which="both", alpha=0.25)
 
     ax = axes[1]
     ax.semilogy(t, abs_floor(data["bridge_l_rel"]), label="Bridge")
-    ax.semilogy(t, abs_floor(data["ias15_l_rel"]), label="IAS15")
     ax.set_ylabel("|dL/L0|")
-    ax.legend(loc="upper left")
     ax.grid(True, which="both", alpha=0.25)
 
     ax = axes[2]
-    ax.semilogy(t, abs_floor(data["laplace_diff_deg"]), color="tab:blue")
-    ax.set_ylabel("|Laplace diff| [deg]")
-    ax.grid(True, which="both", alpha=0.25)
+    ax.plot(t, bridge_laplace_shift, color="tab:blue")
+    ax.axhline(0.0, color="0.3", lw=0.8)
+    ax.set_ylabel("Laplace shift [deg]")
+    ax.grid(True, alpha=0.25)
 
     ax = axes[3]
-    ax.semilogy(t, abs_floor(data["earth_barycenter_error_au"]), label="Earth-Moon host")
-    ax.semilogy(t, abs_floor(data["jupiter_barycenter_error_au"]), label="Jupiter host")
-    ax.set_ylabel("Host error [AU]")
+    ax.plot(t, bridge_em_distance, color="tab:green")
+    ax.set_ylabel("Earth-Moon d [AU]")
     ax.set_xlabel("Time [yr]")
-    ax.legend(loc="upper left")
-    ax.grid(True, which="both", alpha=0.25)
+    ax.grid(True, alpha=0.25)
 
     save_fig(fig, outdir / "bridge_longterm_stability.png")
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
     ax = axes[0]
     ax.semilogy(t, running_abs_max(data["bridge_energy_rel"]), label="Bridge")
-    ax.semilogy(t, running_abs_max(data["ias15_energy_rel"]), label="IAS15")
     ax.set_ylabel("max |dE/E0|")
-    ax.legend(loc="upper left")
     ax.grid(True, which="both", alpha=0.25)
 
     ax = axes[1]
     ax.semilogy(t, running_abs_max(data["bridge_l_rel"]), label="Bridge")
-    ax.semilogy(t, running_abs_max(data["ias15_l_rel"]), label="IAS15")
     ax.set_ylabel("max |dL/L0|")
-    ax.legend(loc="upper left")
     ax.grid(True, which="both", alpha=0.25)
 
     ax = axes[2]
-    ax.semilogy(t, running_abs_max(data["laplace_diff_deg"]), color="tab:blue")
-    ax.set_ylabel("max |Laplace diff| [deg]")
-    ax.grid(True, which="both", alpha=0.25)
+    ax.plot(t, running_abs_max(bridge_laplace_shift), color="tab:blue")
+    ax.set_ylabel("max |Laplace shift| [deg]")
+    ax.grid(True, alpha=0.25)
 
     ax = axes[3]
-    host_error = [max(a, b) for a, b in zip(
-        abs_floor(data["earth_barycenter_error_au"]),
-        abs_floor(data["jupiter_barycenter_error_au"]),
-    )]
-    ax.semilogy(t, running_abs_max(host_error), color="tab:brown")
-    ax.set_ylabel("max host error [AU]")
+    ax.plot(t, running_abs_max(bridge_em_distance_shift), color="tab:brown")
+    ax.set_ylabel("max |Earth-Moon d shift| [AU]")
     ax.set_xlabel("Time [yr]")
-    ax.grid(True, which="both", alpha=0.25)
+    ax.grid(True, alpha=0.25)
 
     save_fig(fig, outdir / "bridge_longterm_envelope.png")
 
@@ -204,7 +226,7 @@ def main():
     data = load_csv(csv_path)
     plot_metrics(data, outdir)
     plot_residuals(data, outdir)
-    plot_host_errors(data, outdir)
+    plot_orbital_residuals(data, outdir)
     plot_long_term_stability(data, outdir)
     print(f"Wrote plots to {outdir}")
 
