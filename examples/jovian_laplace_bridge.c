@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
 /**
  * jovian_laplace_bridge.c - Standalone rebound_bridge Laplace resonance example.
  *

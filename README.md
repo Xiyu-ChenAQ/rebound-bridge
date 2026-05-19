@@ -32,19 +32,28 @@ The Earth-Moon helpers are examples only.  The core API works with any
 
 ## Using REBOUND
 
-`rebound_bridge` is built against the REBOUND C source tree.  It expects a path
-to the directory that contains `rebound.h` and the REBOUND `.c` files.
+`rebound_bridge` is built against the REBOUND 5 C source tree.  By default,
+CMake downloads REBOUND 5.0.0 from the upstream REBOUND repository and compiles
+it as part of the build.
 
-With CMake, pass that directory as `REBOUND_SRC_DIR`:
+The default build is:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release
+```
+
+If you already have a local REBOUND 5 source tree, pass the directory that
+contains `rebound.h` and the REBOUND `.c` files:
 
 ```powershell
 cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
 cmake --build build --config Release
 ```
 
-If this repository contains `_deps/rebound-upstream/src/rebound.h`, CMake uses
-that directory automatically.  Otherwise `REBOUND_SRC_DIR` must be set
-explicitly.
+If this repository contains `_deps/rebound-upstream/src/rebound.h` and that
+copy provides the REBOUND 5 API, CMake uses it automatically.  Older REBOUND 4
+source trees are rejected.
 
 The build creates two static targets:
 
@@ -153,20 +162,24 @@ a 2000-year long-term stability check.
 
 ## CMake Build
 
-Configure with a REBOUND C source tree:
+Configure with the default REBOUND 5 download:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release
+```
+
+Use a local REBOUND 5 source tree instead:
 
 ```powershell
 cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
 cmake --build build --config Release
 ```
 
-If `_deps/rebound-upstream/src` exists, CMake uses it as the default
-`REBOUND_SRC_DIR`.
-
 Disable examples when building only the library:
 
 ```powershell
-cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src" -DREBOUND_BRIDGE_BUILD_EXAMPLES=OFF
+cmake -S . -B build -DREBOUND_BRIDGE_BUILD_EXAMPLES=OFF
 cmake --build build --config Release
 ```
 
@@ -182,3 +195,10 @@ $env:REBOUND_SRC = "C:\path\to\rebound\src"
 cl /nologo /Iinclude /I$env:REBOUND_SRC /Fo:build\ examples\jovian_laplace_bridge.c src\rebound_bridge.c $env:REBOUND_SRC\*.c /Fe:build\jovian_laplace_bridge.exe
 build\jovian_laplace_bridge.exe
 ```
+
+## License
+
+`rebound_bridge` is licensed under GPL-3.0-or-later.  It builds against
+REBOUND, which is also GPL-3.0-or-later.  The default CMake configuration
+downloads REBOUND 5.0.0 from the upstream REBOUND repository and compiles it
+into the local build.

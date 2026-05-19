@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
 #ifndef REBOUND_BRIDGE_H
 #define REBOUND_BRIDGE_H
 

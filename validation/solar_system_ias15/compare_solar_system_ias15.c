@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
 /**
  * compare_solar_system_ias15.c - Bridge vs IAS15 validation for the solar-system demo.
  *
