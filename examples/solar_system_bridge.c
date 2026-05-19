@@ -89,8 +89,10 @@ static struct reb_simulation* make_main_solar_system(void) {
     if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    sim->integrator = REB_INTEGRATOR_WHFAST;
-    sim->ri_whfast.safe_mode = 1;
+    if (reb_bridge_set_integrator_whfast(sim) != 0) {
+        reb_simulation_free(sim);
+        return NULL;
+    }
 
     const double m_mercury = 1.660120e-7;
     const double m_venus = 2.4478383e-6;
@@ -120,8 +122,10 @@ static struct reb_simulation* make_sub_earth_moon_horizons(void) {
     if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    sim->integrator = REB_INTEGRATOR_WHFAST;
-    sim->ri_whfast.safe_mode = 1;
+    if (reb_bridge_set_integrator_whfast(sim) != 0) {
+        reb_simulation_free(sim);
+        return NULL;
+    }
 
     add_cartesian(sim, 3.0034896e-6, -1.17223722782580293e-05, -2.67540695880473792e-05, -2.57902881285356581e-06, 2.57421785107276755e-03, -1.07874487935336202e-03, -1.43157903344392045e-05);
     add_cartesian(sim, 3.6940e-8, 9.53035527126304600e-04, 2.17512105974572998e-03, 2.09676507944608496e-04, -2.09285374018137460e-01, 8.77025716574588027e-02, 1.16388188872971468e-03);
@@ -135,8 +139,10 @@ static struct reb_simulation* make_sub_jovian_horizons(void) {
     if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    sim->integrator = REB_INTEGRATOR_WHFAST;
-    sim->ri_whfast.safe_mode = 1;
+    if (reb_bridge_set_integrator_whfast(sim) != 0) {
+        reb_simulation_free(sim);
+        return NULL;
+    }
 
     reb_simulation_add_fmt(sim, "m", 9.547919e-4);
     add_cartesian(sim, 2.388e-8, 2.48120485765584205e-03, -1.34556438159649208e-03, -1.31630007347439604e-05, 1.75341752994026812e+00, 3.20163492363371871e+00, 1.39542430489110164e-01);
@@ -255,7 +261,7 @@ int main(void) {
 
     printf("rebound_bridge - solar-system multi-subsystem demo\n");
     printf("==================================================\n");
-    printf("  main bodies       = %d\n", main_sim->N);
+    printf("  main bodies       = %zu\n", main_sim->N);
     printf("  subsystems        = %d\n", reb_bridge_subsystem_count(bridge));
     printf("  integration span  = %.1f yr\n", years);
     printf("  dt_outer          = %.3f days\n", dt_outer * 365.25);

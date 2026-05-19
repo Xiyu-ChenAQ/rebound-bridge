@@ -2,6 +2,11 @@ build/
 build-*/
 cmake-build-*/
 _deps/
+docs/superpowers/
+__pycache__/
+*.py[cod]
+validation/solar_system_ias15/out/
+validation/solar_system_ias15/out_*/
 *.obj
 *.o
 *.exe

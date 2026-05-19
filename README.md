@@ -30,6 +30,60 @@ subsystem simulations.
 The Earth-Moon helpers are examples only.  The core API works with any
 `host_index + sub_sim` pair.
 
+## Using REBOUND
+
+`rebound_bridge` is built against the REBOUND C source tree.  It expects a path
+to the directory that contains `rebound.h` and the REBOUND `.c` files.
+
+With CMake, pass that directory as `REBOUND_SRC_DIR`:
+
+```powershell
+cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
+cmake --build build --config Release
+```
+
+If this repository contains `_deps/rebound-upstream/src/rebound.h`, CMake uses
+that directory automatically.  Otherwise `REBOUND_SRC_DIR` must be set
+explicitly.
+
+The build creates two static targets:
+
+- `rebound_bridge::rebound` compiles the REBOUND C sources from
+  `REBOUND_SRC_DIR`.
+- `rebound_bridge::rebound_bridge` compiles this bridge library and links it
+  against `rebound_bridge::rebound`.
+
+Downstream CMake projects should link against:
+
+```cmake
+target_link_libraries(my_target PRIVATE rebound_bridge::rebound_bridge)
+```
+
+Manual builds need both include paths and both source sets:
+
+```powershell
+cl /Iinclude /IC:\path\to\rebound\src ^
+  examples\solar_system_bridge.c src\rebound_bridge.c C:\path\to\rebound\src\*.c
+```
+
+At runtime, users still create normal REBOUND `struct reb_simulation*`
+instances and choose REBOUND integrators as usual.  The bridge stores pointers
+to those simulations and calls `reb_simulation_integrate()` during each bridge
+step.
+
+`dt_outer` and `dt_inner` are also written into REBOUND simulations:
+
+- `reb_bridge_create(main_sim, dt_outer)` sets `main_sim->dt = dt_outer`.
+- `reb_bridge_add_subsystem(..., sub_sim, dt_inner, ...)` sets
+  `sub_sim->dt = dt_inner`.
+
+For fixed-timestep REBOUND integrators such as WHFast, these values are the
+actual REBOUND timesteps used during the drift integrations.  The bridge then
+uses `dt_outer` as the interval between cross-system kick exchanges.  Therefore
+`dt_outer` is both the main simulation timestep and the bridge coupling
+timestep, while `dt_inner` is the subsystem timestep.  The current API requires
+`dt_outer / dt_inner` to be an integer.
+
 ## Validation Notes
 
 `rebound_bridge` is a scheduler around REBOUND simulations, not a standalone

@@ -28,8 +28,10 @@ static struct reb_simulation* make_main_sun_jupiter(void) {
     if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    sim->integrator = REB_INTEGRATOR_WHFAST;
-    sim->ri_whfast.safe_mode = 1;
+    if (reb_bridge_set_integrator_whfast(sim) != 0) {
+        reb_simulation_free(sim);
+        return NULL;
+    }
 
     const double m_jupiter_system = 9.547919e-4 + 2.388e-8 + 2.527e-8 + 7.804e-8;
     reb_simulation_add_fmt(sim, "m", 1.0);
@@ -56,8 +58,10 @@ static struct reb_simulation* make_sub_jovian_laplace(void) {
     if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    sim->integrator = REB_INTEGRATOR_WHFAST;
-    sim->ri_whfast.safe_mode = 1;
+    if (reb_bridge_set_integrator_whfast(sim) != 0) {
+        reb_simulation_free(sim);
+        return NULL;
+    }
 
     const double m_jupiter = 9.547919e-4;
     const double m_io = 2.388e-8;

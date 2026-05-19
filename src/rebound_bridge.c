@@ -60,6 +60,23 @@ static int bridge_error(const char* msg) {
     return -1;
 }
 
+int reb_bridge_set_integrator_whfast(struct reb_simulation* sim) {
+    if (!sim) return bridge_error("sim is NULL");
+    struct reb_integrator_whfast_state* whfast =
+        (struct reb_integrator_whfast_state*)reb_simulation_set_integrator(sim, "whfast");
+    if (!whfast) return bridge_error("failed to set REBOUND integrator to whfast");
+    whfast->safe_mode = 1;
+    return 0;
+}
+
+int reb_bridge_set_integrator_ias15(struct reb_simulation* sim) {
+    if (!sim) return bridge_error("sim is NULL");
+    struct reb_integrator_ias15_state* ias15 =
+        (struct reb_integrator_ias15_state*)reb_simulation_set_integrator(sim, "ias15");
+    if (!ias15) return bridge_error("failed to set REBOUND integrator to ias15");
+    return 0;
+}
+
 static int valid_particle_index(const struct reb_simulation* sim, int index) {
     return sim && index >= 0 && index < sim->N;
 }
@@ -421,8 +438,10 @@ struct reb_simulation* reb_bridge_make_main_sun_emb(void) {
     struct reb_simulation* sim = reb_simulation_create();
     if (!sim) return NULL;
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    sim->integrator = REB_INTEGRATOR_WHFAST;
-    sim->ri_whfast.safe_mode = 1;
+    if (reb_bridge_set_integrator_whfast(sim) != 0) {
+        reb_simulation_free(sim);
+        return NULL;
+    }
 
     reb_simulation_add_fmt(sim, "m", 1.0);
     reb_simulation_add_fmt(sim, "m a e", 3.0e-6, 1.0, 0.0);
@@ -434,8 +453,10 @@ struct reb_simulation* reb_bridge_make_sub_earth_moon(void) {
     struct reb_simulation* sim = reb_simulation_create();
     if (!sim) return NULL;
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    sim->integrator = REB_INTEGRATOR_WHFAST;
-    sim->ri_whfast.safe_mode = 1;
+    if (reb_bridge_set_integrator_whfast(sim) != 0) {
+        reb_simulation_free(sim);
+        return NULL;
+    }
 
     const double m_earth = 3.0e-6 * 0.987;
     const double m_moon = 3.0e-6 * 0.013;
