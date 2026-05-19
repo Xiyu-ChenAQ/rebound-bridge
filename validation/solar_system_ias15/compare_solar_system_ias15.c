@@ -572,13 +572,15 @@ static int parse_int_value(const char* text, int* out) {
 }
 
 static void print_usage(const char* argv0) {
-    fprintf(stderr, "usage: %s [--years N] [--samples N] [--dt-outer-days N]\n", argv0);
+    fprintf(stderr, "usage: %s [--years N] [--samples N] [--dt-outer-days N] [--earth-moon-ratio N] [--jovian-ratio N]\n", argv0);
 }
 
 int main(int argc, char** argv) {
     double years = 2000.0;
     int samples = 2000;
     double dt_outer_days = 1.0;
+    int earth_moon_ratio = 20;
+    int jovian_ratio = 50;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--years") == 0) {
             if (i + 1 >= argc || parse_double_value(argv[++i], &years) != 0 || years <= 0.0) {
@@ -595,6 +597,16 @@ int main(int argc, char** argv) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
+        } else if (strcmp(argv[i], "--earth-moon-ratio") == 0) {
+            if (i + 1 >= argc || parse_int_value(argv[++i], &earth_moon_ratio) != 0) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+        } else if (strcmp(argv[i], "--jovian-ratio") == 0) {
+            if (i + 1 >= argc || parse_int_value(argv[++i], &jovian_ratio) != 0) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
         } else {
             print_usage(argv[0]);
             return EXIT_FAILURE;
@@ -602,8 +614,8 @@ int main(int argc, char** argv) {
     }
 
     const double dt_outer = dt_outer_days / 365.25;
-    const double dt_earth_moon = dt_outer / 20.0;
-    const double dt_jovian = dt_outer / 50.0;
+    const double dt_earth_moon = dt_outer / (double)earth_moon_ratio;
+    const double dt_jovian = dt_outer / (double)jovian_ratio;
     const char* out_path = "validation/solar_system_ias15/out/solar_system_ias15_compare.csv";
 
     struct bridge_state bridge_state = make_bridge_state(dt_outer, dt_earth_moon, dt_jovian);
@@ -741,7 +753,10 @@ int main(int argc, char** argv) {
 
     fclose(fp);
     printf(
-        "bridge_total_seconds=%.9f\nias15_total_seconds=%.9f\noverall_speedup=%.9f\n",
+        "dt_outer_days=%.9f\nearth_moon_ratio=%d\njovian_ratio=%d\nbridge_total_seconds=%.9f\nias15_total_seconds=%.9f\noverall_speedup=%.9f\n",
+        dt_outer_days,
+        earth_moon_ratio,
+        jovian_ratio,
         bridge_cumulative_seconds,
         ias15_cumulative_seconds,
         bridge_cumulative_seconds > 0.0 ? ias15_cumulative_seconds / bridge_cumulative_seconds : 0.0
