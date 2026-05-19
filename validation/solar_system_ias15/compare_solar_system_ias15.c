@@ -12,9 +12,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <direct.h>
+#include <windows.h>
 #else
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -95,6 +97,28 @@ static double distance_particles(const struct reb_particle* a, const struct reb_
     const double dy = a->y - b->y;
     const double dz = a->z - b->z;
     return sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+static double monotonic_seconds(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER frequency;
+    static int initialized = 0;
+    LARGE_INTEGER counter;
+    if (!initialized) {
+        QueryPerformanceFrequency(&frequency);
+        initialized = 1;
+    }
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
+    struct timespec ts;
+#if defined(CLOCK_MONOTONIC)
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+#else
+    timespec_get(&ts, TIME_UTC);
+#endif
+    return (double)ts.tv_sec + 1e-9 * (double)ts.tv_nsec;
+#endif
 }
 
 static struct reb_particle particle_from_state(
@@ -463,6 +487,8 @@ static double heliocentric_phase_degrees(const struct reb_particle* body, const 
 static void write_csv_header(FILE* fp) {
     fprintf(fp,
         "time_yr,"
+        "bridge_step_seconds,ias15_step_seconds,step_speedup,"
+        "bridge_cumulative_seconds,ias15_cumulative_seconds,cumulative_speedup,"
         "bridge_energy_rel,ias15_energy_rel,energy_rel_diff,"
         "bridge_l_rel,ias15_l_rel,l_rel_diff,"
         "bridge_em_distance_au,ias15_em_distance_au,em_distance_diff_au,"
@@ -476,6 +502,10 @@ static void write_csv_header(FILE* fp) {
 static void write_csv_row(
     FILE* fp,
     double time_yr,
+    double bridge_step_seconds,
+    double ias15_step_seconds,
+    double bridge_cumulative_seconds,
+    double ias15_cumulative_seconds,
     double bridge_energy_rel,
     double ias15_energy_rel,
     double bridge_l_rel,
@@ -491,9 +521,17 @@ static void write_csv_row(
     double earth_radius_diff_au,
     double jupiter_radius_diff_au
 ) {
+    const double step_speedup = bridge_step_seconds > 0.0 ? ias15_step_seconds / bridge_step_seconds : 0.0;
+    const double cumulative_speedup = bridge_cumulative_seconds > 0.0 ? ias15_cumulative_seconds / bridge_cumulative_seconds : 0.0;
     fprintf(fp,
-        "%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e\n",
+        "%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e,%.16e\n",
         time_yr,
+        bridge_step_seconds,
+        ias15_step_seconds,
+        step_speedup,
+        bridge_cumulative_seconds,
+        ias15_cumulative_seconds,
+        cumulative_speedup,
         bridge_energy_rel,
         ias15_energy_rel,
         bridge_energy_rel - ias15_energy_rel,
@@ -610,9 +648,12 @@ int main(int argc, char** argv) {
     const double ias15_energy0 = ias150.total_energy;
     const struct reb_vec3d bridge_l0 = bridge0.total_l;
     const struct reb_vec3d ias15_l0 = ias150.total_l;
+    double bridge_cumulative_seconds = 0.0;
+    double ias15_cumulative_seconds = 0.0;
 
     for (int i = 0; i < samples; i++) {
         const double target = years * (double)(i + 1) / (double)samples;
+        const double bridge_start = monotonic_seconds();
 
         if (reb_bridge_advance(bridge_state.bridge, target - bridge_state.main_sim->t) != 0) {
             fprintf(stderr, "bridge advance failed at sample %d\n", i + 1);
@@ -621,6 +662,9 @@ int main(int argc, char** argv) {
             free_bridge_state(&bridge_state);
             return EXIT_FAILURE;
         }
+        const double bridge_step_seconds = monotonic_seconds() - bridge_start;
+        bridge_cumulative_seconds += bridge_step_seconds;
+        const double ias15_start = monotonic_seconds();
 
         if (reb_simulation_integrate(ias15, target) != REB_STATUS_SUCCESS) {
             fprintf(stderr, "IAS15 integrate failed at sample %d\n", i + 1);
@@ -629,6 +673,8 @@ int main(int argc, char** argv) {
             free_bridge_state(&bridge_state);
             return EXIT_FAILURE;
         }
+        const double ias15_step_seconds = monotonic_seconds() - ias15_start;
+        ias15_cumulative_seconds += ias15_step_seconds;
 
         struct reb_particle bridge_bodies[BODY_COUNT];
         struct reb_particle ias15_bodies[BODY_COUNT];
@@ -672,6 +718,10 @@ int main(int argc, char** argv) {
         write_csv_row(
             fp,
             target,
+            bridge_step_seconds,
+            ias15_step_seconds,
+            bridge_cumulative_seconds,
+            ias15_cumulative_seconds,
             bridge_energy_rel,
             ias15_energy_rel,
             bridge_l_rel,
@@ -690,6 +740,12 @@ int main(int argc, char** argv) {
     }
 
     fclose(fp);
+    printf(
+        "bridge_total_seconds=%.9f\nias15_total_seconds=%.9f\noverall_speedup=%.9f\n",
+        bridge_cumulative_seconds,
+        ias15_cumulative_seconds,
+        bridge_cumulative_seconds > 0.0 ? ias15_cumulative_seconds / bridge_cumulative_seconds : 0.0
+    );
     reb_simulation_free(ias15);
     free_bridge_state(&bridge_state);
     return EXIT_SUCCESS;
