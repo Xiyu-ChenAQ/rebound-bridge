@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -534,13 +535,19 @@ static int parse_int_value(const char* text, int* out) {
 }
 
 static void print_usage(const char* argv0) {
-    fprintf(stderr, "usage: %s [--years N] [--samples N] [--dt-outer-days N]\n", argv0);
+    fprintf(
+        stderr,
+        "usage: %s [--years N] [--samples N] [--dt-outer-days N] [--csv PATH] [--timing-csv PATH]\n",
+        argv0
+    );
 }
 
 int main(int argc, char** argv) {
     double years = 2000.0;
     int samples = 2000;
     double dt_outer_days = 1.0;
+    const char* out_path = "validation/solar_system_ias15/out/solar_system_ias15_compare.csv";
+    const char* timing_path = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--years") == 0) {
             if (i + 1 >= argc || parse_double_value(argv[++i], &years) != 0 || years <= 0.0) {
@@ -557,6 +564,18 @@ int main(int argc, char** argv) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
+        } else if (strcmp(argv[i], "--csv") == 0) {
+            if (i + 1 >= argc) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            out_path = argv[++i];
+        } else if (strcmp(argv[i], "--timing-csv") == 0) {
+            if (i + 1 >= argc) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            timing_path = argv[++i];
         } else {
             print_usage(argv[0]);
             return EXIT_FAILURE;
@@ -566,7 +585,6 @@ int main(int argc, char** argv) {
     const double dt_outer = dt_outer_days / 365.25;
     const double dt_earth_moon = dt_outer / 20.0;
     const double dt_jovian = dt_outer / 50.0;
-    const char* out_path = "validation/solar_system_ias15/out/solar_system_ias15_compare.csv";
 
     struct bridge_state bridge_state = make_bridge_state(dt_outer, dt_earth_moon, dt_jovian);
     if (!bridge_state.bridge || !bridge_state.main_sim || !bridge_state.earth_moon || !bridge_state.jovian) {
@@ -610,10 +628,13 @@ int main(int argc, char** argv) {
     const double ias15_energy0 = ias150.total_energy;
     const struct reb_vec3d bridge_l0 = bridge0.total_l;
     const struct reb_vec3d ias15_l0 = ias150.total_l;
+    double bridge_seconds = 0.0;
+    double ias15_seconds = 0.0;
 
     for (int i = 0; i < samples; i++) {
         const double target = years * (double)(i + 1) / (double)samples;
 
+        const clock_t bridge_start = clock();
         if (reb_bridge_advance(bridge_state.bridge, target - bridge_state.main_sim->t) != 0) {
             fprintf(stderr, "bridge advance failed at sample %d\n", i + 1);
             fclose(fp);
@@ -621,7 +642,9 @@ int main(int argc, char** argv) {
             free_bridge_state(&bridge_state);
             return EXIT_FAILURE;
         }
+        bridge_seconds += (double)(clock() - bridge_start) / (double)CLOCKS_PER_SEC;
 
+        const clock_t ias15_start = clock();
         if (reb_simulation_integrate(ias15, target) != REB_STATUS_SUCCESS) {
             fprintf(stderr, "IAS15 integrate failed at sample %d\n", i + 1);
             fclose(fp);
@@ -629,6 +652,7 @@ int main(int argc, char** argv) {
             free_bridge_state(&bridge_state);
             return EXIT_FAILURE;
         }
+        ias15_seconds += (double)(clock() - ias15_start) / (double)CLOCKS_PER_SEC;
 
         struct reb_particle bridge_bodies[BODY_COUNT];
         struct reb_particle ias15_bodies[BODY_COUNT];
@@ -690,6 +714,45 @@ int main(int argc, char** argv) {
     }
 
     fclose(fp);
+
+    if (timing_path) {
+        FILE* timing_fp = fopen(timing_path, "w");
+        if (!timing_fp) {
+            fprintf(stderr, "failed to open timing CSV: %s\n", timing_path);
+            reb_simulation_free(ias15);
+            free_bridge_state(&bridge_state);
+            return EXIT_FAILURE;
+        }
+        const double speedup = bridge_seconds > 0.0 ? ias15_seconds / bridge_seconds : 0.0;
+        const double bridge_throughput = bridge_seconds > 0.0 ? years / bridge_seconds : 0.0;
+        const double ias15_throughput = ias15_seconds > 0.0 ? years / ias15_seconds : 0.0;
+        fprintf(
+            timing_fp,
+            "years,samples,dt_outer_days,dt_earth_moon_days,dt_jovian_days,bridge_seconds,ias15_seconds,speedup_ias15_over_bridge,bridge_years_per_second,ias15_years_per_second\n"
+        );
+        fprintf(
+            timing_fp,
+            "%.17g,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
+            years,
+            samples,
+            dt_outer_days,
+            dt_earth_moon * 365.25,
+            dt_jovian * 365.25,
+            bridge_seconds,
+            ias15_seconds,
+            speedup,
+            bridge_throughput,
+            ias15_throughput
+        );
+        fclose(timing_fp);
+        printf(
+            "timing: Bridge %.6g s, IAS15 %.6g s, speedup %.3gx\n",
+            bridge_seconds,
+            ias15_seconds,
+            speedup
+        );
+    }
+
     reb_simulation_free(ias15);
     free_bridge_state(&bridge_state);
     return EXIT_SUCCESS;
