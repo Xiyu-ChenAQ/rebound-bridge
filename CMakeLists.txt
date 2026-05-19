@@ -123,6 +123,12 @@ if(REBOUND_BRIDGE_BUILD_VALIDATION)
         validation/solar_system_ias15/compare_solar_system_ias15.c
     )
     target_link_libraries(solar_system_ias15_compare PRIVATE rebound_bridge::rebound_bridge)
+
+    add_executable(
+        solar_system_whfast_bridge_bench
+        validation/solar_system_ias15/bench_whfast_bridge.c
+    )
+    target_link_libraries(solar_system_whfast_bridge_bench PRIVATE rebound_bridge::rebound_bridge)
 endif()
 
 if(REBOUND_BRIDGE_INSTALL)
