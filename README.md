@@ -119,6 +119,43 @@ subsystem.  Once the subsystem is internally resolved, reducing `dt_inner`
 further will not remove bridge coupling error; reducing `dt_outer` is then the
 relevant accuracy knob.
 
+### Solar-System Parameter Choice
+
+The solar-system bridge setup has two resolved subsystems: Earth-Moon and
+Jupiter-Io-Europa-Ganymede.  Parameter sweeps compare runtime, conserved
+quantities, and the Jovian Laplace-angle residual against an IAS15 reference.
+
+The current recommended balanced setting is:
+
+```text
+dt_outer_days    = 0.75
+earth_moon_ratio = 3
+jovian_ratio     = 12
+dt_earth_moon    = 0.25 day
+dt_jovian        = 0.0625 day
+```
+
+This is the setting used by `examples/solar_system_bridge.c`.  In the 20000-year
+bridge-only sweep, it is slower than the most aggressive setting but reduces
+the long-term Laplace-angle residual substantially.
+
+Measured tradeoffs from the local 20000-year tests:
+
+```text
+setting         bridge time   max |Laplace residual|   note
+1d / 5 / 15     185.95 s      16.48 deg                fastest tested stable run
+0.75d / 3 / 10  195.49 s      10.20 deg                small runtime cost, better phase
+0.75d / 3 / 12  209.97 s       7.28 deg                recommended balanced choice
+0.75d / 3 / 15  233.68 s       5.02 deg                more conservative phase choice
+```
+
+Energy and angular-momentum errors remain at the same order of magnitude across
+these runs.  The main accuracy tradeoff is long-term orbital phase, especially
+the Jovian Laplace angle.  Larger outer steps such as `1.5d` are fast but showed
+large Laplace residuals in the 5000-year screen, and non-integer-looking decimal
+steps can require tolerant time synchronization because accumulated floating
+point differences eventually reach a few `1e-12 yr`.
+
 ## Minimal Use
 
 ```c
@@ -145,7 +182,8 @@ with two resolved bridge subsystems: Earth-Moon and
 Jupiter-Io-Europa-Ganymede. It is intended to validate multi-subsystem bridge
 plumbing for solar-system-scale sandbox simulations. The example uses a larger
 outer timestep for planetary motion and smaller inner timesteps for the resolved
-moon subsystems.
+moon subsystems.  The example uses the balanced sweep setting documented above:
+`dt_outer = 0.75 day`, Earth-Moon ratio `3`, and Jovian ratio `12`.
 
 ## Validation Suite
 
