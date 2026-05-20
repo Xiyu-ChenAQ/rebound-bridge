@@ -210,9 +210,12 @@ static double jovian_laplace_angle_degrees(const struct reb_simulation* jovian) 
 }
 
 int main(void) {
-    const double dt_outer = 1.0 / 365.25;
-    const double dt_earth_moon = dt_outer / 20.0;
-    const double dt_jovian = dt_outer / 50.0;
+    const double dt_outer_days = 0.75;
+    const int earth_moon_ratio = 3;
+    const int jovian_ratio = 12;
+    const double dt_outer = dt_outer_days / 365.25;
+    const double dt_earth_moon = dt_outer / (double)earth_moon_ratio;
+    const double dt_jovian = dt_outer / (double)jovian_ratio;
     const double years = 100.0;
     const int samples = 1000;
 
@@ -267,8 +270,10 @@ int main(void) {
     printf("  subsystems        = %d\n", reb_bridge_subsystem_count(bridge));
     printf("  integration span  = %.1f yr\n", years);
     printf("  dt_outer          = %.3f days\n", dt_outer * 365.25);
+    printf("  earth_moon_ratio  = %d\n", earth_moon_ratio);
+    printf("  jovian_ratio      = %d\n", jovian_ratio);
     printf("  dt_earth_moon     = %.3f days\n", dt_earth_moon * 365.25);
-    printf("  dt_jovian         = %.3f days\n", dt_jovian * 365.25);
+    printf("  dt_jovian         = %.4f days\n", dt_jovian * 365.25);
     printf("  Earth-Moon d_mean = %.8f AU\n", mean_em);
     printf("  Earth-Moon d_std  = %.3e AU\n", std_em);
     printf("  Earth host r      = %.6f .. %.6f AU\n", earth_host.min, earth_host.max);
