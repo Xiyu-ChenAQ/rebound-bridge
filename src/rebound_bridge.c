@@ -62,6 +62,11 @@ static double vec_norm(struct reb_bridge_vec3 v) {
     return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
+static double bridge_time_sync_tolerance(double a, double b) {
+    const double scale = fmax(fabs(a), fabs(b));
+    return 1.0e-12 + 1.0e-15 * fmax(1.0, scale);
+}
+
 static int bridge_error(const char* msg) {
     fprintf(stderr, "[rebound_bridge] %s\n", msg);
     return -1;
@@ -293,9 +298,21 @@ static int apply_subsystem_cross_kick(
     if (!valid_particle_index(main_sim, sub->host_index)) {
         return bridge_error("host_index is out of bounds during kick");
     }
-    if (fabs(main_sim->t - sub_sim->t) > 1.0e-12) {
-        return bridge_error("main and subsystem times are out of sync");
+    const double time_diff = sub_sim->t - main_sim->t;
+    const double time_tol = bridge_time_sync_tolerance(main_sim->t, sub_sim->t);
+    if (fabs(time_diff) > time_tol) {
+        fprintf(
+            stderr,
+            "[rebound_bridge] main and subsystem times are out of sync: main.t=%.17g sub.t=%.17g diff=%.17g tol=%.17g host_index=%d\n",
+            main_sim->t,
+            sub_sim->t,
+            time_diff,
+            time_tol,
+            sub->host_index
+        );
+        return -1;
     }
+    sub_sim->t = main_sim->t;
 
     const int n = sub_sim->N;
     struct reb_bridge_vec3 bc;
