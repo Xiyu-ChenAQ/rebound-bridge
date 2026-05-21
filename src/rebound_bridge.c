@@ -95,8 +95,6 @@ static int valid_particle_index(const struct reb_simulation* sim, int index) {
 
 static struct reb_bridge_body_state body_state(const struct reb_particle* p) {
     struct reb_bridge_body_state s;
-    memset(&s, 0, sizeof(s));
-    if (!p) return s;
     s.x = p->x;
     s.y = p->y;
     s.z = p->z;
@@ -111,7 +109,6 @@ static int subsystem_barycenter(
     const struct reb_simulation* sim,
     struct reb_bridge_vec3* out
 ) {
-    if (!sim || !out) return bridge_error("subsystem_barycenter received NULL");
     if (sim->N <= 0) return bridge_error("subsystem has no particles");
 
     double mt = 0.0;
@@ -251,10 +248,6 @@ struct reb_simulation* reb_bridge_sub_sim(struct reb_bridge* bridge, int subsyst
 }
 
 static int ensure_kick_workspace(struct reb_bridge* bridge, int sub_particles, int main_particles) {
-    if (!bridge || sub_particles < 0 || main_particles < 0) {
-        return bridge_error("invalid kick workspace request");
-    }
-
     if (sub_particles > bridge->cap_sub_particles) {
         struct reb_bridge_vec3* internal_acc =
             (struct reb_bridge_vec3*)realloc(
@@ -340,6 +333,10 @@ static int apply_subsystem_cross_kick(
 
     struct reb_bridge_vec3 host_acc = vec3(0.0, 0.0, 0.0);
 
+    /*
+     * The bridge kick applies the external tidal field to resolved subsystem
+     * members and feeds the equal reaction back to the main-system particles.
+     */
     for (int source_index = 0; source_index < main_sim->N; source_index++) {
         if (source_index == sub->host_index) continue;
         const struct reb_particle* source = &main_sim->particles[source_index];
