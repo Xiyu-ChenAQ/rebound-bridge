@@ -312,6 +312,7 @@ static int apply_subsystem_cross_kick(
         );
         return -1;
     }
+    /* Snap only the time label inside floating-point tolerance; particle state is unchanged. */
     sub_sim->t = main_sim->t;
 
     const int n = sub_sim->N;
@@ -407,25 +408,6 @@ int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick) {
     return 0;
 }
 
-int reb_bridge_step(struct reb_bridge* bridge, double dt) {
-    if (!bridge) return bridge_error("bridge is NULL");
-    if (dt <= 0.0) return bridge_error("dt must be positive");
-
-    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
-
-    const double target = bridge->main_sim->t + dt;
-    for (int i = 0; i < bridge->n_subsystems; i++) {
-        enum REB_STATUS status = reb_simulation_integrate(bridge->subsystems[i].sub_sim, target);
-        if (status != REB_STATUS_SUCCESS) return bridge_error("subsystem integration failed");
-    }
-
-    enum REB_STATUS main_status = reb_simulation_integrate(bridge->main_sim, target);
-    if (main_status != REB_STATUS_SUCCESS) return bridge_error("main integration failed");
-
-    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
-    return 0;
-}
-
 static int bridge_integrate_all_to_target(struct reb_bridge* bridge, double target) {
     for (int i = 0; i < bridge->n_subsystems; i++) {
         enum REB_STATUS status = reb_simulation_integrate(bridge->subsystems[i].sub_sim, target);
@@ -434,6 +416,16 @@ static int bridge_integrate_all_to_target(struct reb_bridge* bridge, double targ
 
     enum REB_STATUS main_status = reb_simulation_integrate(bridge->main_sim, target);
     if (main_status != REB_STATUS_SUCCESS) return bridge_error("main integration failed");
+    return 0;
+}
+
+int reb_bridge_step(struct reb_bridge* bridge, double dt) {
+    if (!bridge) return bridge_error("bridge is NULL");
+    if (dt <= 0.0) return bridge_error("dt must be positive");
+
+    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
+    if (bridge_integrate_all_to_target(bridge, bridge->main_sim->t + dt) != 0) return -1;
+    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
     return 0;
 }
 
@@ -448,6 +440,7 @@ int reb_bridge_advance(struct reb_bridge* bridge, double duration) {
 
     if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
 
+    /* Adjacent half-kicks are merged, preserving the KDK composition over many outer steps. */
     while (1) {
         const double step_target = bridge->main_sim->t + dt;
         if (bridge_integrate_all_to_target(bridge, step_target) != 0) return -1;
