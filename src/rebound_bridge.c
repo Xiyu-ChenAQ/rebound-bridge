@@ -27,6 +27,11 @@ struct reb_bridge {
     struct reb_bridge_subsystem* subsystems;
     int n_subsystems;
     int cap_subsystems;
+    struct reb_bridge_vec3* internal_acc;
+    struct reb_bridge_vec3* source_acc;
+    struct reb_bridge_vec3* main_acc;
+    int cap_sub_particles;
+    int cap_main_particles;
 };
 
 static struct reb_bridge_vec3 vec3(double x, double y, double z) {
@@ -57,6 +62,11 @@ static double vec_norm(struct reb_bridge_vec3 v) {
     return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
+static double bridge_time_sync_tolerance(double a, double b) {
+    const double scale = fmax(fabs(a), fabs(b));
+    return 1.0e-12 + 1.0e-15 * fmax(1.0, scale);
+}
+
 static int bridge_error(const char* msg) {
     fprintf(stderr, "[rebound_bridge] %s\n", msg);
     return -1;
@@ -85,8 +95,6 @@ static int valid_particle_index(const struct reb_simulation* sim, int index) {
 
 static struct reb_bridge_body_state body_state(const struct reb_particle* p) {
     struct reb_bridge_body_state s;
-    memset(&s, 0, sizeof(s));
-    if (!p) return s;
     s.x = p->x;
     s.y = p->y;
     s.z = p->z;
@@ -101,7 +109,6 @@ static int subsystem_barycenter(
     const struct reb_simulation* sim,
     struct reb_bridge_vec3* out
 ) {
-    if (!sim || !out) return bridge_error("subsystem_barycenter received NULL");
     if (sim->N <= 0) return bridge_error("subsystem has no particles");
 
     double mt = 0.0;
@@ -176,6 +183,9 @@ void reb_bridge_free(struct reb_bridge* bridge) {
         }
     }
     free(bridge->subsystems);
+    free(bridge->internal_acc);
+    free(bridge->source_acc);
+    free(bridge->main_acc);
     if (bridge->owns_main_sim && bridge->main_sim) {
         reb_simulation_free(bridge->main_sim);
     }
@@ -237,6 +247,40 @@ struct reb_simulation* reb_bridge_sub_sim(struct reb_bridge* bridge, int subsyst
     return bridge->subsystems[subsystem_index].sub_sim;
 }
 
+static int ensure_kick_workspace(struct reb_bridge* bridge, int sub_particles, int main_particles) {
+    if (sub_particles > bridge->cap_sub_particles) {
+        struct reb_bridge_vec3* internal_acc =
+            (struct reb_bridge_vec3*)realloc(
+                bridge->internal_acc,
+                sizeof(*internal_acc) * (size_t)sub_particles
+            );
+        if (!internal_acc) return bridge_error("out of memory");
+        bridge->internal_acc = internal_acc;
+
+        struct reb_bridge_vec3* source_acc =
+            (struct reb_bridge_vec3*)realloc(
+                bridge->source_acc,
+                sizeof(*source_acc) * (size_t)sub_particles
+            );
+        if (!source_acc) return bridge_error("out of memory");
+        bridge->source_acc = source_acc;
+        bridge->cap_sub_particles = sub_particles;
+    }
+
+    if (main_particles > bridge->cap_main_particles) {
+        struct reb_bridge_vec3* main_acc =
+            (struct reb_bridge_vec3*)realloc(
+                bridge->main_acc,
+                sizeof(*main_acc) * (size_t)main_particles
+            );
+        if (!main_acc) return bridge_error("out of memory");
+        bridge->main_acc = main_acc;
+        bridge->cap_main_particles = main_particles;
+    }
+
+    return 0;
+}
+
 static int apply_subsystem_cross_kick(
     struct reb_bridge* bridge,
     struct reb_bridge_subsystem* sub,
@@ -247,26 +291,33 @@ static int apply_subsystem_cross_kick(
     if (!valid_particle_index(main_sim, sub->host_index)) {
         return bridge_error("host_index is out of bounds during kick");
     }
-    if (fabs(main_sim->t - sub_sim->t) > 1.0e-12) {
-        return bridge_error("main and subsystem times are out of sync");
+    const double time_diff = sub_sim->t - main_sim->t;
+    const double time_tol = bridge_time_sync_tolerance(main_sim->t, sub_sim->t);
+    if (fabs(time_diff) > time_tol) {
+        fprintf(
+            stderr,
+            "[rebound_bridge] main and subsystem times are out of sync: main.t=%.17g sub.t=%.17g diff=%.17g tol=%.17g host_index=%d\n",
+            main_sim->t,
+            sub_sim->t,
+            time_diff,
+            time_tol,
+            sub->host_index
+        );
+        return -1;
     }
+    /* Snap only the time label inside floating-point tolerance; particle state is unchanged. */
+    sub_sim->t = main_sim->t;
 
     const int n = sub_sim->N;
     struct reb_bridge_vec3 bc;
     if (subsystem_barycenter(sub_sim, &bc) != 0) return -1;
 
-    struct reb_bridge_vec3* internal_acc =
-        (struct reb_bridge_vec3*)calloc((size_t)n, sizeof(*internal_acc));
-    struct reb_bridge_vec3* source_acc =
-        (struct reb_bridge_vec3*)calloc((size_t)n, sizeof(*source_acc));
-    struct reb_bridge_vec3* main_acc =
-        (struct reb_bridge_vec3*)calloc((size_t)main_sim->N, sizeof(*main_acc));
-    if (!internal_acc || !source_acc || !main_acc) {
-        free(internal_acc);
-        free(source_acc);
-        free(main_acc);
-        return bridge_error("out of memory");
-    }
+    if (ensure_kick_workspace(bridge, n, main_sim->N) != 0) return -1;
+    struct reb_bridge_vec3* internal_acc = bridge->internal_acc;
+    struct reb_bridge_vec3* source_acc = bridge->source_acc;
+    struct reb_bridge_vec3* main_acc = bridge->main_acc;
+    memset(internal_acc, 0, sizeof(*internal_acc) * (size_t)n);
+    memset(main_acc, 0, sizeof(*main_acc) * (size_t)main_sim->N);
 
     const struct reb_particle* host = &main_sim->particles[sub->host_index];
     struct reb_bridge_vec3 host_pos = particle_pos(host);
@@ -277,14 +328,15 @@ static int apply_subsystem_cross_kick(
         mt += sub_sim->particles[i].m;
     }
     if (mt <= 0.0) {
-        free(internal_acc);
-        free(source_acc);
-        free(main_acc);
         return bridge_error("subsystem total mass must be positive");
     }
 
     struct reb_bridge_vec3 host_acc = vec3(0.0, 0.0, 0.0);
 
+    /*
+     * The bridge kick applies the external tidal field to resolved subsystem
+     * members and feeds the equal reaction back to the main-system particles.
+     */
     for (int source_index = 0; source_index < main_sim->N; source_index++) {
         if (source_index == sub->host_index) continue;
         const struct reb_particle* source = &main_sim->particles[source_index];
@@ -338,9 +390,6 @@ static int apply_subsystem_cross_kick(
         source->vz += main_acc[source_index].z * dt_kick;
     }
 
-    free(internal_acc);
-    free(source_acc);
-    free(main_acc);
     reb_simulation_synchronize(sub_sim);
     reb_simulation_synchronize(main_sim);
     return 0;
@@ -356,13 +405,7 @@ int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick) {
     return 0;
 }
 
-int reb_bridge_step(struct reb_bridge* bridge, double dt) {
-    if (!bridge) return bridge_error("bridge is NULL");
-    if (dt <= 0.0) return bridge_error("dt must be positive");
-
-    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
-
-    const double target = bridge->main_sim->t + dt;
+static int bridge_integrate_all_to_target(struct reb_bridge* bridge, double target) {
     for (int i = 0; i < bridge->n_subsystems; i++) {
         enum REB_STATUS status = reb_simulation_integrate(bridge->subsystems[i].sub_sim, target);
         if (status != REB_STATUS_SUCCESS) return bridge_error("subsystem integration failed");
@@ -370,7 +413,15 @@ int reb_bridge_step(struct reb_bridge* bridge, double dt) {
 
     enum REB_STATUS main_status = reb_simulation_integrate(bridge->main_sim, target);
     if (main_status != REB_STATUS_SUCCESS) return bridge_error("main integration failed");
+    return 0;
+}
 
+int reb_bridge_step(struct reb_bridge* bridge, double dt) {
+    if (!bridge) return bridge_error("bridge is NULL");
+    if (dt <= 0.0) return bridge_error("dt must be positive");
+
+    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
+    if (bridge_integrate_all_to_target(bridge, bridge->main_sim->t + dt) != 0) return -1;
     if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
     return 0;
 }
@@ -378,13 +429,29 @@ int reb_bridge_step(struct reb_bridge* bridge, double dt) {
 int reb_bridge_advance(struct reb_bridge* bridge, double duration) {
     if (!bridge) return bridge_error("bridge is NULL");
     if (duration < 0.0) return bridge_error("duration must be non-negative");
+    if (duration == 0.0) return 0;
 
     const double target = bridge->main_sim->t + duration;
-    while (bridge->main_sim->t < target - 1.0e-14) {
-        double dt = target - bridge->main_sim->t;
-        if (dt > bridge->dt_outer) dt = bridge->dt_outer;
-        if (reb_bridge_step(bridge, dt) != 0) return -1;
+    double dt = target - bridge->main_sim->t;
+    if (dt > bridge->dt_outer) dt = bridge->dt_outer;
+
+    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
+
+    /* Adjacent half-kicks are merged, preserving the KDK composition over many outer steps. */
+    while (1) {
+        const double step_target = bridge->main_sim->t + dt;
+        if (bridge_integrate_all_to_target(bridge, step_target) != 0) return -1;
+
+        if (bridge->main_sim->t >= target - 1.0e-14) break;
+
+        double next_dt = target - bridge->main_sim->t;
+        if (next_dt > bridge->dt_outer) next_dt = bridge->dt_outer;
+
+        if (reb_bridge_apply_cross_kick(bridge, 0.5 * (dt + next_dt)) != 0) return -1;
+        dt = next_dt;
     }
+
+    if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
     return 0;
 }
 

@@ -2,12 +2,18 @@
 
 import argparse
 import csv
+import math
+import statistics
 from pathlib import Path
 
-import matplotlib
+try:
+    import matplotlib
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except ModuleNotFoundError:
+    matplotlib = None
+    plt = None
 
 
 def load_csv(path):
@@ -21,6 +27,8 @@ def load_csv(path):
 
 
 def save_fig(fig, path):
+    if plt is None:
+        return
     fig.tight_layout()
     fig.savefig(path, dpi=200)
     plt.close(fig)
@@ -37,6 +45,35 @@ def running_abs_max(series, floor=1e-300):
         current = max(current, abs(value))
         out.append(max(current, floor))
     return out
+
+
+def running_mean(series, window):
+    if not series:
+        return []
+    out = []
+    acc = 0.0
+    for i, value in enumerate(series):
+        acc += value
+        if i >= window:
+            acc -= series[i - window]
+        count = min(i + 1, window)
+        out.append(acc / count)
+    return out
+
+
+def percentile(series, fraction):
+    if not series:
+        return 0.0
+    values = sorted(series)
+    if len(values) == 1:
+        return values[0]
+    position = max(0.0, min(1.0, fraction)) * (len(values) - 1)
+    lo = int(math.floor(position))
+    hi = int(math.ceil(position))
+    if lo == hi:
+        return values[lo]
+    weight = position - lo
+    return values[lo] * (1.0 - weight) + values[hi] * weight
 
 
 def unwrap_degrees(series):
@@ -57,6 +94,8 @@ def unwrap_degrees(series):
 
 
 def plot_metrics(data, outdir):
+    if plt is None:
+        return
     t = data["time_yr"]
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
@@ -93,6 +132,8 @@ def plot_metrics(data, outdir):
 
 
 def plot_residuals(data, outdir):
+    if plt is None:
+        return
     t = data["time_yr"]
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
@@ -125,6 +166,8 @@ def plot_residuals(data, outdir):
 
 
 def plot_orbital_residuals(data, outdir):
+    if plt is None:
+        return
     t = data["time_yr"]
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
@@ -157,6 +200,8 @@ def plot_orbital_residuals(data, outdir):
 
 
 def plot_long_term_stability(data, outdir):
+    if plt is None:
+        return
     t = data["time_yr"]
     bridge_laplace = unwrap_degrees(data["bridge_laplace_deg"])
     bridge_laplace_shift = [value - bridge_laplace[0] for value in bridge_laplace]
@@ -213,6 +258,84 @@ def plot_long_term_stability(data, outdir):
     save_fig(fig, outdir / "bridge_longterm_envelope.png")
 
 
+def plot_efficiency(data, outdir):
+    if plt is None:
+        return
+    t = data["time_yr"]
+    bridge_step_ms = [1e3 * value for value in data["bridge_step_seconds"]]
+    ias15_step_ms = [1e3 * value for value in data["ias15_step_seconds"]]
+    step_speedup = data["step_speedup"]
+    cumulative_speedup = data["cumulative_speedup"]
+    smooth_window = min(200, max(10, len(step_speedup) // 50 if step_speedup else 10))
+    smooth_step_speedup = running_mean(step_speedup, smooth_window)
+
+    fig, axes = plt.subplots(4, 1, figsize=(12, 15), sharex=True)
+    ax = axes[0]
+    ax.semilogy(t, abs_floor(data["bridge_step_seconds"]), label="Bridge")
+    ax.semilogy(t, abs_floor(data["ias15_step_seconds"]), label="IAS15")
+    ax.set_ylabel("Step time [s]")
+    ax.legend(loc="upper left")
+    ax.grid(True, which="both", alpha=0.25)
+
+    ax = axes[1]
+    ax.plot(t, bridge_step_ms, label="Bridge")
+    ax.plot(t, ias15_step_ms, label="IAS15")
+    ax.set_ylabel("Step time [ms]")
+    ax.legend(loc="upper left")
+    ax.grid(True, alpha=0.25)
+
+    ax = axes[2]
+    ax.plot(t, data["bridge_cumulative_seconds"], label="Bridge")
+    ax.plot(t, data["ias15_cumulative_seconds"], label="IAS15")
+    ax.set_ylabel("Cumulative time [s]")
+    ax.legend(loc="upper left")
+    ax.grid(True, alpha=0.25)
+
+    ax = axes[3]
+    ax.plot(t, step_speedup, color="tab:green", alpha=0.35, label="Step speedup")
+    ax.plot(t, smooth_step_speedup, color="tab:green", lw=2.0, label=f"Step speedup mean ({smooth_window})")
+    ax.plot(t, cumulative_speedup, color="tab:red", lw=1.5, label="Cumulative speedup")
+    ax.axhline(1.0, color="0.3", lw=0.8)
+    ax.set_ylabel("IAS15 / Bridge")
+    ax.set_xlabel("Time [yr]")
+    ax.legend(loc="upper left")
+    ax.grid(True, alpha=0.25)
+
+    save_fig(fig, outdir / "bridge_vs_ias15_efficiency.png")
+
+
+def write_efficiency_summary(data, outdir):
+    bridge_steps = data["bridge_step_seconds"]
+    ias15_steps = data["ias15_step_seconds"]
+    step_speedup = [value for value in data["step_speedup"] if math.isfinite(value) and value > 0.0]
+    cumulative_speedup = [value for value in data["cumulative_speedup"] if math.isfinite(value) and value > 0.0]
+    bridge_total = data["bridge_cumulative_seconds"][-1] if data["bridge_cumulative_seconds"] else 0.0
+    ias15_total = data["ias15_cumulative_seconds"][-1] if data["ias15_cumulative_seconds"] else 0.0
+    faster_steps = sum(1 for b, i in zip(bridge_steps, ias15_steps) if b < i)
+    slower_steps = sum(1 for b, i in zip(bridge_steps, ias15_steps) if b > i)
+
+    lines = [
+        "Bridge vs IAS15 efficiency summary",
+        "speedup definition: IAS15 step time / Bridge step time; values > 1 mean Bridge is faster",
+        f"samples: {len(bridge_steps)}",
+        f"bridge_total_seconds: {bridge_total:.9f}",
+        f"ias15_total_seconds: {ias15_total:.9f}",
+        f"overall_speedup: {(ias15_total / bridge_total) if bridge_total > 0.0 else 0.0:.9f}",
+        f"bridge_mean_step_ms: {1e3 * statistics.fmean(bridge_steps):.6f}",
+        f"ias15_mean_step_ms: {1e3 * statistics.fmean(ias15_steps):.6f}",
+        f"bridge_median_step_ms: {1e3 * statistics.median(bridge_steps):.6f}",
+        f"ias15_median_step_ms: {1e3 * statistics.median(ias15_steps):.6f}",
+        f"bridge_p95_step_ms: {1e3 * percentile(bridge_steps, 0.95):.6f}",
+        f"ias15_p95_step_ms: {1e3 * percentile(ias15_steps, 0.95):.6f}",
+        f"step_speedup_median: {statistics.median(step_speedup) if step_speedup else 0.0:.9f}",
+        f"step_speedup_p95: {percentile(step_speedup, 0.95) if step_speedup else 0.0:.9f}",
+        f"cumulative_speedup_final: {cumulative_speedup[-1] if cumulative_speedup else 0.0:.9f}",
+        f"bridge_faster_steps: {faster_steps}",
+        f"ias15_faster_steps: {slower_steps}",
+    ]
+    (outdir / "efficiency_summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", required=True)
@@ -228,7 +351,12 @@ def main():
     plot_residuals(data, outdir)
     plot_orbital_residuals(data, outdir)
     plot_long_term_stability(data, outdir)
-    print(f"Wrote plots to {outdir}")
+    plot_efficiency(data, outdir)
+    write_efficiency_summary(data, outdir)
+    if plt is None:
+        print(f"Wrote summary to {outdir} (matplotlib not installed, skipped plots)")
+    else:
+        print(f"Wrote plots to {outdir}")
 
 
 if __name__ == "__main__":
