@@ -100,7 +100,13 @@ replacement integrator.  A typical configuration uses WHFast inside the main
 simulation and inside each subsystem, while the bridge supplies the symmetric
 KDK coupling between subsystem barycenters and resolved subsystem bodies.
 
-The current validation focus is long-term structural behavior:
+The validation target is long-term structural fidelity rather than pointwise
+agreement with a high-order non-symplectic reference at every output time.
+In practice this means checking that resolved subsystems stay bound, resonant
+structure is preserved, and conserved quantities remain bounded over long
+integrations.
+
+Current validated setups:
 
 - Forward-then-backward integrations return close to the initial state, which
   checks the time symmetry of the bridge composition.
@@ -110,8 +116,28 @@ The current validation focus is long-term structural behavior:
   drift in the tested Earth-Moon setup.
 - Long runs require backreaction from subsystem kicks to the host particle;
   one-way coupling produces unacceptable momentum drift.
-- IAS15 runs are used as reference trajectories for measuring residuals and
-  phase error over finite spans, not as the design target of the bridge method.
+- The Jupiter-Io-Europa-Ganymede example keeps the Laplace-angle diagnostic
+  well behaved and serves as the reference multi-body moon-resonance example.
+- The solar-system bridge example resolves both Earth-Moon and the inner
+  Galilean system inside a Sun-plus-eight-planets main simulation, which is
+  the current sandbox-scale validation configuration.
+
+Long-term checks currently included in the repository focus on the solar-system
+setup:
+
+- `validation/solar_system_ias15/out/` contains the standard 2000-year
+  comparison figures.
+- `validation/solar_system_ias15/out_20000yr/` contains the longer 20000-year
+  stability run used to verify that the bridge shows bounded oscillatory error
+  rather than secular breakup in this configuration.
+- The bridge is not expected to match IAS15 phase-for-phase over very long
+  spans; instead the important checks are bounded energy and angular-momentum
+  error, stable Earth-Moon separation, and preserved resonant behavior.
+
+IAS15 is used here as a reference trajectory for finite-time residuals and
+diagnostics, not as the design target of the bridge method.  The comparison
+workflow measures energy, angular momentum, Earth-Moon distance, Laplace
+angle, and heliocentric phase/radius residuals for the bridged subsystems.
 
 `dt_outer` controls how often main and subsystem simulations exchange
 perturbations.  `dt_inner` controls the internal REBOUND integration of each
@@ -188,15 +214,27 @@ moon subsystems.  The example uses the balanced sweep setting documented above:
 ## Validation Suite
 
 `validation/solar_system_ias15/` contains a standalone bridge-vs-IAS15
-comparison workflow for the solar-system setup. The default workflow now runs
-a 2000-year long-term stability check.
+comparison workflow for the solar-system setup.
 
 - `compare_solar_system_ias15.c` runs both the bridge and a direct IAS15
   reference from the same initial conditions and writes a CSV of diagnostics.
 - `plot_solar_system_ias15.py` renders energy, angular-momentum, distance, and
   phase/residual plots plus long-run stability and envelope plots from that CSV.
-- `run.ps1` builds the validation target, runs the 2000-year comparison, and
-  generates the figures in `validation/solar_system_ias15/out/`.
+- `run.ps1` builds the validation target, runs the default 2000-year
+  comparison, and generates the figures in `validation/solar_system_ias15/out/`.
+- `out_20000yr/` stores the longer 20000-year stability figures for the same
+  solar-system configuration.
+
+`validation/solar_system_ias15/runtime_benchmark/` contains a separate runtime
+benchmark workflow for comparing bridge cost against direct IAS15 integration
+for the same solar-system model.
+
+- `run.ps1` repeats the benchmark for 100, 500, and 2000 years and writes raw
+  repeats plus summary tables.
+- `plot_runtime_benchmark.py` generates runtime, throughput, and speedup plots.
+- The current benchmark results in `runtime_summary.md` show roughly `~10x`
+  speedup for the tested bridge configuration on the benchmark machine, with
+  repeated runs used to visualize timing scatter.
 
 ## CMake Build
 
