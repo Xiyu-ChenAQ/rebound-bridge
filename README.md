@@ -9,11 +9,22 @@ separate static/shared library later.
 
 ```text
 rebound_bridge/
+  CMakeLists.txt
+  cmake/
   include/rebound_bridge.h
   src/rebound_bridge.c
-  examples/earth_moon_bridge.c
-  examples/jovian_laplace_bridge.c
-  examples/solar_system_bridge.c
+  examples/
+    earth_moon_bridge.c
+    jovian_laplace_bridge.c
+    solar_system_bridge.c
+  validation/solar_system_ias15/
+    compare_solar_system_ias15.c
+    bench_whfast_bridge.c
+    plot_solar_system_ias15.py
+    plot_efficiency_sweep.py
+    out_2000yr/
+    out_20000yr/
+    benchmark_figures/
 ```
 
 ## Model
@@ -125,7 +136,7 @@ Current validated setups:
 Long-term checks currently included in the repository focus on the solar-system
 setup:
 
-- `validation/solar_system_ias15/out/` contains the standard 2000-year
+- `validation/solar_system_ias15/out_2000yr/` contains the standard 2000-year
   comparison figures.
 - `validation/solar_system_ias15/out_20000yr/` contains the longer 20000-year
   stability run used to verify that the bridge shows bounded oscillatory error
@@ -221,20 +232,14 @@ comparison workflow for the solar-system setup.
 - `plot_solar_system_ias15.py` renders energy, angular-momentum, distance, and
   phase/residual plots plus long-run stability and envelope plots from that CSV.
 - `run.ps1` builds the validation target, runs the default 2000-year
-  comparison, and generates the figures in `validation/solar_system_ias15/out/`.
+  comparison, and generates the figures in
+  `validation/solar_system_ias15/out_2000yr/`.
 - `out_20000yr/` stores the longer 20000-year stability figures for the same
   solar-system configuration.
-
-`validation/solar_system_ias15/runtime_benchmark/` contains a separate runtime
-benchmark workflow for comparing bridge cost against direct IAS15 integration
-for the same solar-system model.
-
-- `run.ps1` repeats the benchmark for 100, 500, and 2000 years and writes raw
-  repeats plus summary tables.
-- `plot_runtime_benchmark.py` generates runtime, throughput, and speedup plots.
-- The current benchmark results in `runtime_summary.md` show roughly `~10x`
-  speedup for the tested bridge configuration on the benchmark machine, with
-  repeated runs used to visualize timing scatter.
+- `bench_whfast_bridge.c` and `plot_efficiency_sweep.py` provide the current
+  runtime comparison workflow.
+- `benchmark_figures/` stores the tracked bridge-vs-IAS15 and
+  bridge-vs-WHFast speed comparison figures and CSV summaries.
 
 ## CMake Build
 
