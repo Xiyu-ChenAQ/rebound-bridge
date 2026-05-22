@@ -7,6 +7,8 @@ __pycache__/
 *.py[cod]
 validation/solar_system_ias15/out/
 validation/solar_system_ias15/out_*/
+validation/solar_system_ias15/run_efficiency_sweep.ps1
+validation/solar_system_ias15/run_parameter_sweep.ps1
 *.obj
 *.o
 *.exe
@@ -15,3 +17,5 @@ validation/solar_system_ias15/out_*/
 *.exp
 *.pdb
 *.ilk
+validation/solar_system_ias15/run_efficiency_sweep.ps1
+validation/solar_system_ias15/run_parameter_sweep.ps1
