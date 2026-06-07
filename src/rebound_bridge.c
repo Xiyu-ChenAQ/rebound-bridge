@@ -39,7 +39,6 @@ static int bridge_error(const char* msg) {
 }
 
 int reb_bridge_set_integrator_whfast(struct reb_simulation* sim) {
-    if (!sim) return bridge_error("sim is NULL");
     struct reb_integrator_whfast_state* whfast =
         (struct reb_integrator_whfast_state*)reb_simulation_set_integrator(sim, "whfast");
     if (!whfast) return bridge_error("failed to set REBOUND integrator to whfast");
@@ -48,7 +47,6 @@ int reb_bridge_set_integrator_whfast(struct reb_simulation* sim) {
 }
 
 int reb_bridge_set_integrator_ias15(struct reb_simulation* sim) {
-    if (!sim) return bridge_error("sim is NULL");
     struct reb_integrator_ias15_state* ias15 =
         (struct reb_integrator_ias15_state*)reb_simulation_set_integrator(sim, "ias15");
     if (!ias15) return bridge_error("failed to set REBOUND integrator to ias15");
@@ -56,7 +54,7 @@ int reb_bridge_set_integrator_ias15(struct reb_simulation* sim) {
 }
 
 static int valid_particle_index(const struct reb_simulation* sim, int index) {
-    return sim && index >= 0 && index < sim->N;
+    return sim && index >= 0 && (size_t)index < sim->N;
 }
 
 static struct reb_bridge_body_state body_state(const struct reb_particle* p) {
@@ -86,7 +84,7 @@ static int subsystem_barycenter(
 
     double mt = 0.0;
     double x = 0.0, y = 0.0, z = 0.0;
-    for (int i = 0; i < sim->N; i++) {
+    for (size_t i = 0; i < sim->N; i++) {
         const struct reb_particle* p = &sim->particles[i];
         mt += p->m;
         x += p->x * p->m;
@@ -118,10 +116,6 @@ static struct reb_vec3d accel_from_mass(
 }
 
 struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_outer) {
-    if (!main_sim) {
-        bridge_error("main_sim is NULL");
-        return NULL;
-    }
     if (dt_outer <= 0.0) {
         bridge_error("dt_outer must be positive");
         return NULL;
@@ -141,8 +135,7 @@ struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_
 }
 
 void reb_bridge_set_owns_main(struct reb_bridge* bridge, int owns_main_sim) {
-    if (!bridge) return;
-    bridge->owns_main_sim = owns_main_sim ? 1 : 0;
+    bridge->owns_main_sim = owns_main_sim;
 }
 
 void reb_bridge_free(struct reb_bridge* bridge) {
@@ -169,8 +162,6 @@ int reb_bridge_add_subsystem(
     double dt_inner,
     int owns_sub_sim
 ) {
-    if (!bridge) return bridge_error("bridge is NULL");
-    if (!sub_sim) return bridge_error("sub_sim is NULL");
     if (!valid_particle_index(bridge->main_sim, host_index)) {
         return bridge_error("host_index is out of bounds");
     }
@@ -200,7 +191,7 @@ int reb_bridge_add_subsystem(
     sub->sub_sim = sub_sim;
     sub->host_index = host_index;
     sub->dt_inner = dt_inner;
-    sub->owns_sub_sim = owns_sub_sim ? 1 : 0;
+    sub->owns_sub_sim = owns_sub_sim;
     return 0;
 }
 
@@ -264,16 +255,7 @@ static int apply_subsystem_cross_kick(
     const double time_diff = sub_sim->t - main_sim->t;
     const double time_tol = bridge_time_sync_tolerance(main_sim->t, sub_sim->t);
     if (fabs(time_diff) > time_tol) {
-        fprintf(
-            stderr,
-            "[rebound_bridge] main and subsystem times are out of sync: main.t=%.17g sub.t=%.17g diff=%.17g tol=%.17g host_index=%d\n",
-            main_sim->t,
-            sub_sim->t,
-            time_diff,
-            time_tol,
-            sub->host_index
-        );
-        return -1;
+        return bridge_error("main and subsystem times are out of sync");
     }
     /* Snap only the time label inside floating-point tolerance; particle state is unchanged. */
     sub_sim->t = main_sim->t;
@@ -305,7 +287,7 @@ static int apply_subsystem_cross_kick(
     double host_ax = 0.0, host_ay = 0.0, host_az = 0.0;
 
     /* Apply the external tidal field to subsystem members; feed the equal reaction back to the main system. */
-    for (int source_index = 0; source_index < main_sim->N; source_index++) {
+    for (int source_index = 0; source_index < (int)main_sim->N; source_index++) {
         if (source_index == sub->host_index) continue;
         const struct reb_particle* source = &main_sim->particles[source_index];
         if (source->m == 0.0) continue;
@@ -360,7 +342,7 @@ static int apply_subsystem_cross_kick(
     host_mut->vy += host_ay * dt_kick;
     host_mut->vz += host_az * dt_kick;
 
-    for (int source_index = 0; source_index < main_sim->N; source_index++) {
+    for (int source_index = 0; source_index < (int)main_sim->N; source_index++) {
         if (source_index == sub->host_index) continue;
         struct reb_particle* source = &main_sim->particles[source_index];
         source->vx += main_acc[source_index].x * dt_kick;
@@ -374,7 +356,6 @@ static int apply_subsystem_cross_kick(
 }
 
 int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick) {
-    if (!bridge) return bridge_error("bridge is NULL");
     for (int i = 0; i < bridge->n_subsystems; i++) {
         if (apply_subsystem_cross_kick(bridge, &bridge->subsystems[i], dt_kick) != 0) {
             return -1;
@@ -395,7 +376,6 @@ static int bridge_integrate_all_to_target(struct reb_bridge* bridge, double targ
 }
 
 int reb_bridge_step(struct reb_bridge* bridge, double dt) {
-    if (!bridge) return bridge_error("bridge is NULL");
     if (dt <= 0.0) return bridge_error("dt must be positive");
 
     if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
@@ -405,7 +385,6 @@ int reb_bridge_step(struct reb_bridge* bridge, double dt) {
 }
 
 int reb_bridge_advance(struct reb_bridge* bridge, double duration) {
-    if (!bridge) return bridge_error("bridge is NULL");
     if (duration < 0.0) return bridge_error("duration must be non-negative");
     if (duration == 0.0) return 0;
 
@@ -438,7 +417,6 @@ int reb_bridge_snapshot(
     int subsystem_index,
     struct reb_bridge_snapshot* out
 ) {
-    if (!bridge || !out) return bridge_error("snapshot received NULL");
     if (subsystem_index < 0 || subsystem_index >= bridge->n_subsystems) {
         return bridge_error("subsystem_index is out of bounds");
     }
@@ -536,6 +514,7 @@ struct reb_bridge* reb_bridge_create_earth_moon(double dt_outer, int sub_ratio) 
 
     reb_bridge_set_owns_main(bridge, 1);
     if (reb_bridge_add_subsystem(bridge, 1, sub_sim, dt_outer / (double)sub_ratio, 1) != 0) {
+        reb_simulation_free(sub_sim);
         reb_bridge_free(bridge);
         return NULL;
     }
