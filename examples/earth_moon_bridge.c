@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /**
  * earth_moon_bridge.c - Standalone rebound_bridge validation example.

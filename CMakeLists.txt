@@ -13,6 +13,7 @@ include(FetchContent)
 
 option(REBOUND_BRIDGE_BUILD_EXAMPLES "Build rebound_bridge example programs" ON)
 option(REBOUND_BRIDGE_BUILD_VALIDATION "Build validation comparison tools" ON)
+option(REBOUND_BRIDGE_BUILD_TESTS "Build rebound_bridge unit tests" ON)
 option(REBOUND_BRIDGE_INSTALL "Install rebound_bridge targets and headers" ON)
 option(REBOUND_BRIDGE_FETCH_REBOUND "Download REBOUND 5 when REBOUND_SRC_DIR is not set" ON)
 
@@ -64,7 +65,7 @@ if(NOT REBOUND_BRIDGE_REBOUND_SOURCES)
     message(FATAL_ERROR "No REBOUND C sources found in REBOUND_SRC_DIR: ${REBOUND_SRC_DIR}")
 endif()
 
-add_library(rebound_bridge_rebound STATIC ${REBOUND_BRIDGE_REBOUND_SOURCES})
+add_library(rebound_bridge_rebound ${REBOUND_BRIDGE_REBOUND_SOURCES})
 add_library(rebound_bridge::rebound ALIAS rebound_bridge_rebound)
 target_include_directories(
     rebound_bridge_rebound
@@ -87,7 +88,7 @@ if(UNIX)
     target_link_libraries(rebound_bridge_rebound PUBLIC m)
 endif()
 
-add_library(rebound_bridge STATIC src/rebound_bridge.c)
+add_library(rebound_bridge src/rebound_bridge.c)
 add_library(rebound_bridge::rebound_bridge ALIAS rebound_bridge)
 target_include_directories(
     rebound_bridge
@@ -102,7 +103,16 @@ set_target_properties(
     PROPERTIES
         OUTPUT_NAME rebound_bridge
         POSITION_INDEPENDENT_CODE ON
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
 )
+
+# When built as a shared library, switch the header's dllexport/import macro on
+# and mark this translation unit as the one exporting symbols.
+if(BUILD_SHARED_LIBS)
+    target_compile_definitions(rebound_bridge PUBLIC REB_BRIDGE_BUILD_SHARED)
+    target_compile_definitions(rebound_bridge PRIVATE REB_BRIDGE_BUILDING_LIBRARY)
+endif()
 
 if(REBOUND_BRIDGE_BUILD_EXAMPLES)
     set(_rebound_bridge_examples
@@ -129,6 +139,13 @@ if(REBOUND_BRIDGE_BUILD_VALIDATION)
         validation/solar_system_ias15/bench_whfast_bridge.c
     )
     target_link_libraries(solar_system_whfast_bridge_bench PRIVATE rebound_bridge::rebound_bridge)
+endif()
+
+if(REBOUND_BRIDGE_BUILD_TESTS)
+    enable_testing()
+    add_executable(test_bridge test/test_bridge.c)
+    target_link_libraries(test_bridge PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME test_bridge COMMAND test_bridge)
 endif()
 
 if(REBOUND_BRIDGE_INSTALL)

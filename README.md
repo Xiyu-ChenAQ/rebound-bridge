@@ -274,7 +274,9 @@ build\jovian_laplace_bridge.exe
 
 ## License
 
-`rebound_bridge` is licensed under GPL-3.0-or-later.  It builds against
-REBOUND, which is also GPL-3.0-or-later.  The default CMake configuration
+`rebound_bridge` is licensed under GPL-3.0-only.  It builds against
+REBOUND, which is GPL-3.0-or-later; bundling it under a GPL-3.0-only
+wrapper is permitted, and any work linking `rebound_bridge` must comply
+with the GNU GPL version 3.  The default CMake configuration
 downloads REBOUND 5.0.0 from the upstream REBOUND repository and compiles it
 into the local build.

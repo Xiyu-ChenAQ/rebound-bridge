@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /**
  * solar_system_bridge.c - Multi-subsystem rebound_bridge validation example.
