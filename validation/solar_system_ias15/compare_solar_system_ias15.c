@@ -358,7 +358,7 @@ static struct reb_simulation* make_ias15_reference(void) {
     if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
-    if (reb_bridge_set_integrator_ias15(sim) != 0) {
+    if (!reb_simulation_set_integrator(sim, "ias15")) {
         reb_simulation_free(sim);
         return NULL;
     }

@@ -78,7 +78,8 @@ REB_BRIDGE_API int reb_bridge_snapshot(
 );
 
 REB_BRIDGE_API int reb_bridge_set_integrator_whfast(struct reb_simulation* sim);
-REB_BRIDGE_API int reb_bridge_set_integrator_ias15(struct reb_simulation* sim);
+/* type is a REB_INTEGRATOR_SABA_TYPE_* value; 0 keeps REBOUND's default SABA(10,6,4). */
+REB_BRIDGE_API int reb_bridge_set_integrator_saba(struct reb_simulation* sim, int type);
 
 REB_BRIDGE_API struct reb_simulation* reb_bridge_make_main_sun_emb(void);
 REB_BRIDGE_API struct reb_simulation* reb_bridge_make_sub_earth_moon(void);

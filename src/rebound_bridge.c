@@ -46,10 +46,12 @@ int reb_bridge_set_integrator_whfast(struct reb_simulation* sim) {
     return 0;
 }
 
-int reb_bridge_set_integrator_ias15(struct reb_simulation* sim) {
-    struct reb_integrator_ias15_state* ias15 =
-        (struct reb_integrator_ias15_state*)reb_simulation_set_integrator(sim, "ias15");
-    if (!ias15) return bridge_error("failed to set REBOUND integrator to ias15");
+int reb_bridge_set_integrator_saba(struct reb_simulation* sim, int type) {
+    struct reb_integrator_saba_state* saba =
+        (struct reb_integrator_saba_state*)reb_simulation_set_integrator(sim, "saba");
+    if (!saba) return bridge_error("failed to set REBOUND integrator to saba");
+    if (type != 0) saba->type = type;
+    saba->safe_mode = 1;
     return 0;
 }
 
