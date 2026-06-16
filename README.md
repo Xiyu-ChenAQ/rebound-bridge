@@ -1,5 +1,7 @@
 # rebound_bridge
 
+An operator-splitting scheduler for coupling independent REBOUND simulations.
+
 It only depends on the REBOUND C API and can be moved into its own repository or built as a
 separate static/shared library later.
 
