@@ -1,32 +1,7 @@
 # rebound_bridge
 
-Standalone symplectic bridge scheduler for REBOUND.
-
 It only depends on the REBOUND C API and can be moved into its own repository or built as a
 separate static/shared library later.
-
-## Layout
-
-```text
-rebound_bridge/
-  CMakeLists.txt
-  cmake/
-  include/rebound_bridge.h
-  src/rebound_bridge.c
-  examples/
-    earth_moon_bridge.c
-    jovian_laplace_bridge.c
-    solar_system_bridge.c
-  validation/solar_system_ias15/
-    compare_solar_system_ias15.c
-    bench_whfast_bridge.c
-    plot_solar_system_ias15.py
-    plot_efficiency_sweep.py
-    run.ps1
-    out_2000yr/
-    out_20000yr/
-    benchmark_figures/
-```
 
 ## Model
 
