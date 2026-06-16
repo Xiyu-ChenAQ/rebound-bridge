@@ -6,14 +6,10 @@ import math
 import statistics
 from pathlib import Path
 
-try:
-    import matplotlib
+import matplotlib
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except ModuleNotFoundError:
-    matplotlib = None
-    plt = None
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
 def load_csv(path):
@@ -27,8 +23,6 @@ def load_csv(path):
 
 
 def save_fig(fig, path):
-    if plt is None:
-        return
     fig.tight_layout()
     fig.savefig(path, dpi=200)
     plt.close(fig)
@@ -94,8 +88,6 @@ def unwrap_degrees(series):
 
 
 def plot_metrics(data, outdir):
-    if plt is None:
-        return
     t = data["time_yr"]
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
@@ -132,8 +124,6 @@ def plot_metrics(data, outdir):
 
 
 def plot_residuals(data, outdir):
-    if plt is None:
-        return
     t = data["time_yr"]
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
@@ -166,8 +156,6 @@ def plot_residuals(data, outdir):
 
 
 def plot_orbital_residuals(data, outdir):
-    if plt is None:
-        return
     t = data["time_yr"]
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 14), sharex=True)
@@ -200,8 +188,6 @@ def plot_orbital_residuals(data, outdir):
 
 
 def plot_long_term_stability(data, outdir):
-    if plt is None:
-        return
     t = data["time_yr"]
     bridge_laplace = unwrap_degrees(data["bridge_laplace_deg"])
     bridge_laplace_shift = [value - bridge_laplace[0] for value in bridge_laplace]
@@ -259,8 +245,6 @@ def plot_long_term_stability(data, outdir):
 
 
 def plot_efficiency(data, outdir):
-    if plt is None:
-        return
     t = data["time_yr"]
     bridge_step_ms = [1e3 * value for value in data["bridge_step_seconds"]]
     ias15_step_ms = [1e3 * value for value in data["ias15_step_seconds"]]
@@ -353,10 +337,7 @@ def main():
     plot_long_term_stability(data, outdir)
     plot_efficiency(data, outdir)
     write_efficiency_summary(data, outdir)
-    if plt is None:
-        print(f"Wrote summary to {outdir} (matplotlib not installed, skipped plots)")
-    else:
-        print(f"Wrote plots to {outdir}")
+    print(f"Wrote plots to {outdir}")
 
 
 if __name__ == "__main__":

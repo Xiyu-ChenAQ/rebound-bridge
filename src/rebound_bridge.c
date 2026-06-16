@@ -64,6 +64,7 @@ static double vec_norm(struct reb_bridge_vec3 v) {
 
 static double bridge_time_sync_tolerance(double a, double b) {
     const double scale = fmax(fabs(a), fabs(b));
+    /* relative term widens tolerance at large t (long runs, e.g. 20000 yr) */
     return 1.0e-12 + 1.0e-15 * fmax(1.0, scale);
 }
 
@@ -305,7 +306,6 @@ static int apply_subsystem_cross_kick(
         );
         return -1;
     }
-    /* Snap only the time label inside floating-point tolerance; particle state is unchanged. */
     sub_sim->t = main_sim->t;
 
     const int n = sub_sim->N;
@@ -333,10 +333,6 @@ static int apply_subsystem_cross_kick(
 
     struct reb_bridge_vec3 host_acc = vec3(0.0, 0.0, 0.0);
 
-    /*
-     * The bridge kick applies the external tidal field to resolved subsystem
-     * members and feeds the equal reaction back to the main-system particles.
-     */
     for (int source_index = 0; source_index < main_sim->N; source_index++) {
         if (source_index == sub->host_index) continue;
         const struct reb_particle* source = &main_sim->particles[source_index];
@@ -437,7 +433,6 @@ int reb_bridge_advance(struct reb_bridge* bridge, double duration) {
 
     if (reb_bridge_apply_cross_kick(bridge, 0.5 * dt) != 0) return -1;
 
-    /* Adjacent half-kicks are merged, preserving the KDK composition over many outer steps. */
     while (1) {
         const double step_target = bridge->main_sim->t + dt;
         if (bridge_integrate_all_to_target(bridge, step_target) != 0) return -1;

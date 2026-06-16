@@ -7,19 +7,13 @@
  */
 
 #include <math.h>
-#include <errno.h>
-#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #ifdef _WIN32
-#include <direct.h>
 #include <windows.h>
-#else
-#include <sys/stat.h>
-#include <sys/types.h>
 #endif
 
 #include "rebound_bridge.h"
@@ -151,23 +145,6 @@ static struct reb_particle particle_add(const struct reb_particle* host, const s
     p.vy += host->vy;
     p.vz += host->vz;
     return p;
-}
-
-static int ensure_directory(const char* path) {
-#ifdef _WIN32
-    if (_mkdir(path) == 0) return 0;
-#else
-    if (mkdir(path, 0777) == 0) return 0;
-#endif
-    if (errno == EEXIST) return 0;
-    return -1;
-}
-
-static int ensure_output_tree(void) {
-    if (ensure_directory("validation") != 0) return -1;
-    if (ensure_directory("validation/solar_system_ias15") != 0) return -1;
-    if (ensure_directory("validation/solar_system_ias15/out") != 0) return -1;
-    return 0;
 }
 
 static void add_cartesian(
@@ -553,28 +530,10 @@ static void write_csv_row(
     );
 }
 
-static int parse_double_value(const char* text, double* out) {
-    char* end = NULL;
-    errno = 0;
-    const double value = strtod(text, &end);
-    if (errno != 0 || end == text || *end != '\0') return -1;
-    *out = value;
-    return 0;
-}
-
-static int parse_int_value(const char* text, int* out) {
-    char* end = NULL;
-    errno = 0;
-    const long value = strtol(text, &end, 10);
-    if (errno != 0 || end == text || *end != '\0' || value <= 0 || value > INT_MAX) return -1;
-    *out = (int)value;
-    return 0;
-}
-
 static void print_usage(const char* argv0) {
     fprintf(
         stderr,
-        "usage: %s [--years N] [--samples N] [--dt-outer-days N] [--earth-moon-ratio N] [--jovian-ratio N] [--bridge-only] [--csv PATH] [--timing-csv PATH]\n",
+        "usage: %s [--years N] [--samples N] [--dt-outer-days N] [--earth-moon-ratio N] [--jovian-ratio N] [--csv PATH]\n",
         argv0
     );
 }
@@ -584,50 +543,65 @@ int main(int argc, char** argv) {
     int samples = 2000;
     double dt_outer_days = 1.0;
     const char* out_path = "validation/solar_system_ias15/out/solar_system_ias15_compare.csv";
-    const char* timing_path = NULL;
     int earth_moon_ratio = 20;
     int jovian_ratio = 50;
-    int bridge_only = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--years") == 0) {
-            if (i + 1 >= argc || parse_double_value(argv[++i], &years) != 0 || years <= 0.0) {
+            if (i + 1 >= argc) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            years = atof(argv[++i]);
+            if (years <= 0.0) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
         } else if (strcmp(argv[i], "--samples") == 0) {
-            if (i + 1 >= argc || parse_int_value(argv[++i], &samples) != 0) {
+            if (i + 1 >= argc) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            samples = atoi(argv[++i]);
+            if (samples <= 0) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
         } else if (strcmp(argv[i], "--dt-outer-days") == 0) {
-            if (i + 1 >= argc || parse_double_value(argv[++i], &dt_outer_days) != 0 || dt_outer_days <= 0.0) {
+            if (i + 1 >= argc) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            dt_outer_days = atof(argv[++i]);
+            if (dt_outer_days <= 0.0) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
         } else if (strcmp(argv[i], "--earth-moon-ratio") == 0) {
-            if (i + 1 >= argc || parse_int_value(argv[++i], &earth_moon_ratio) != 0) {
+            if (i + 1 >= argc) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            earth_moon_ratio = atoi(argv[++i]);
+            if (earth_moon_ratio <= 0) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
         } else if (strcmp(argv[i], "--jovian-ratio") == 0) {
-            if (i + 1 >= argc || parse_int_value(argv[++i], &jovian_ratio) != 0) {
+            if (i + 1 >= argc) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
-        } else if (strcmp(argv[i], "--bridge-only") == 0) {
-            bridge_only = 1;
+            jovian_ratio = atoi(argv[++i]);
+            if (jovian_ratio <= 0) {
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
         } else if (strcmp(argv[i], "--csv") == 0) {
             if (i + 1 >= argc) {
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
             }
             out_path = argv[++i];
-        } else if (strcmp(argv[i], "--timing-csv") == 0) {
-            if (i + 1 >= argc) {
-                print_usage(argv[0]);
-                return EXIT_FAILURE;
-            }
-            timing_path = argv[++i];
         } else {
             print_usage(argv[0]);
             return EXIT_FAILURE;
@@ -645,16 +619,9 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    struct reb_simulation* ias15 = bridge_only ? NULL : make_ias15_reference();
-    if (!bridge_only && !ias15) {
+    struct reb_simulation* ias15 = make_ias15_reference();
+    if (!ias15) {
         fprintf(stderr, "failed to create IAS15 reference state\n");
-        free_bridge_state(&bridge_state);
-        return EXIT_FAILURE;
-    }
-
-    if (ensure_output_tree() != 0) {
-        fprintf(stderr, "failed to create output directories\n");
-        if (ias15) reb_simulation_free(ias15);
         free_bridge_state(&bridge_state);
         return EXIT_FAILURE;
     }
@@ -662,7 +629,7 @@ int main(int argc, char** argv) {
     FILE* fp = fopen(out_path, "w");
     if (!fp) {
         fprintf(stderr, "failed to open output CSV: %s\n", out_path);
-        if (ias15) reb_simulation_free(ias15);
+        reb_simulation_free(ias15);
         free_bridge_state(&bridge_state);
         return EXIT_FAILURE;
     }
@@ -672,11 +639,7 @@ int main(int argc, char** argv) {
     struct reb_particle bridge_initial[BODY_COUNT];
     struct reb_particle ias15_initial[BODY_COUNT];
     fill_bridge_bodies(&bridge_state, bridge_initial);
-    if (ias15) {
-        fill_reference_bodies(ias15, ias15_initial);
-    } else {
-        memcpy(ias15_initial, bridge_initial, sizeof(ias15_initial));
-    }
+    fill_reference_bodies(ias15, ias15_initial);
 
     const struct body_metrics bridge0 = compute_metrics(bridge_initial, REB_BRIDGE_G_AU_YR_MSUN);
     const struct body_metrics ias150 = compute_metrics(ias15_initial, REB_BRIDGE_G_AU_YR_MSUN);
@@ -694,34 +657,27 @@ int main(int argc, char** argv) {
         if (reb_bridge_advance(bridge_state.bridge, target - bridge_state.main_sim->t) != 0) {
             fprintf(stderr, "bridge advance failed at sample %d\n", i + 1);
             fclose(fp);
-            if (ias15) reb_simulation_free(ias15);
+            reb_simulation_free(ias15);
             free_bridge_state(&bridge_state);
             return EXIT_FAILURE;
         }
         const double bridge_step_seconds = monotonic_seconds() - bridge_start;
         bridge_cumulative_seconds += bridge_step_seconds;
-        double ias15_step_seconds = 0.0;
-        if (ias15) {
-            const double ias15_start = monotonic_seconds();
-            if (reb_simulation_integrate(ias15, target) != REB_STATUS_SUCCESS) {
-                fprintf(stderr, "IAS15 integrate failed at sample %d\n", i + 1);
-                fclose(fp);
-                reb_simulation_free(ias15);
-                free_bridge_state(&bridge_state);
-                return EXIT_FAILURE;
-            }
-            ias15_step_seconds = monotonic_seconds() - ias15_start;
-            ias15_cumulative_seconds += ias15_step_seconds;
+        const double ias15_start = monotonic_seconds();
+        if (reb_simulation_integrate(ias15, target) != REB_STATUS_SUCCESS) {
+            fprintf(stderr, "IAS15 integrate failed at sample %d\n", i + 1);
+            fclose(fp);
+            reb_simulation_free(ias15);
+            free_bridge_state(&bridge_state);
+            return EXIT_FAILURE;
         }
+        const double ias15_step_seconds = monotonic_seconds() - ias15_start;
+        ias15_cumulative_seconds += ias15_step_seconds;
 
         struct reb_particle bridge_bodies[BODY_COUNT];
         struct reb_particle ias15_bodies[BODY_COUNT];
         fill_bridge_bodies(&bridge_state, bridge_bodies);
-        if (ias15) {
-            fill_reference_bodies(ias15, ias15_bodies);
-        } else {
-            memcpy(ias15_bodies, bridge_bodies, sizeof(ias15_bodies));
-        }
+        fill_reference_bodies(ias15, ias15_bodies);
 
         const struct body_metrics bridge_metrics = compute_metrics(bridge_bodies, REB_BRIDGE_G_AU_YR_MSUN);
         const struct body_metrics ias15_metrics = compute_metrics(ias15_bodies, REB_BRIDGE_G_AU_YR_MSUN);
@@ -782,51 +738,16 @@ int main(int argc, char** argv) {
     }
 
     fclose(fp);
-    if (timing_path) {
-        FILE* timing_fp = fopen(timing_path, "w");
-        if (!timing_fp) {
-            fprintf(stderr, "failed to open timing CSV: %s\n", timing_path);
-            if (ias15) reb_simulation_free(ias15);
-            free_bridge_state(&bridge_state);
-            return EXIT_FAILURE;
-        }
-        const double speedup = bridge_cumulative_seconds > 0.0 ? ias15_cumulative_seconds / bridge_cumulative_seconds : 0.0;
-        const double bridge_throughput = bridge_cumulative_seconds > 0.0 ? years / bridge_cumulative_seconds : 0.0;
-        const double ias15_throughput = ias15_cumulative_seconds > 0.0 ? years / ias15_cumulative_seconds : 0.0;
-        fprintf(
-            timing_fp,
-            "years,samples,dt_outer_days,dt_earth_moon_days,dt_jovian_days,earth_moon_ratio,jovian_ratio,bridge_only,bridge_seconds,ias15_seconds,speedup_ias15_over_bridge,bridge_years_per_second,ias15_years_per_second\n"
-        );
-        fprintf(
-            timing_fp,
-            "%.17g,%d,%.17g,%.17g,%.17g,%d,%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g\n",
-            years,
-            samples,
-            dt_outer_days,
-            dt_earth_moon * 365.25,
-            dt_jovian * 365.25,
-            earth_moon_ratio,
-            jovian_ratio,
-            bridge_only,
-            bridge_cumulative_seconds,
-            ias15_cumulative_seconds,
-            speedup,
-            bridge_throughput,
-            ias15_throughput
-        );
-        fclose(timing_fp);
-    }
     printf(
-        "dt_outer_days=%.9f\nearth_moon_ratio=%d\njovian_ratio=%d\nbridge_only=%d\nbridge_total_seconds=%.9f\nias15_total_seconds=%.9f\noverall_speedup=%.9f\n",
+        "dt_outer_days=%.9f\nearth_moon_ratio=%d\njovian_ratio=%d\nbridge_total_seconds=%.9f\nias15_total_seconds=%.9f\noverall_speedup=%.9f\n",
         dt_outer_days,
         earth_moon_ratio,
         jovian_ratio,
-        bridge_only,
         bridge_cumulative_seconds,
         ias15_cumulative_seconds,
         bridge_cumulative_seconds > 0.0 ? ias15_cumulative_seconds / bridge_cumulative_seconds : 0.0
     );
-    if (ias15) reb_simulation_free(ias15);
+    reb_simulation_free(ias15);
     free_bridge_state(&bridge_state);
     return EXIT_SUCCESS;
 }

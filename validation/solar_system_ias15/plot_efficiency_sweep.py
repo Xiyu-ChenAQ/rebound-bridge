@@ -4,14 +4,10 @@ import argparse
 import csv
 from pathlib import Path
 
-try:
-    import matplotlib
+import matplotlib
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except ModuleNotFoundError:
-    matplotlib = None
-    plt = None
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
 def load_rows(path):
@@ -19,30 +15,25 @@ def load_rows(path):
         reader = csv.DictReader(fp)
         rows = []
         for row in reader:
-            normalized = {key.lstrip("\ufeff").strip('"'): value for key, value in row.items()}
             rows.append(
                 {
-                    "years": float(normalized["years"]),
-                    "samples": int(normalized["samples"]),
-                    "bridge_total_seconds": float(normalized["bridge_total_seconds"]),
-                    "ias15_total_seconds": float(normalized["ias15_total_seconds"]),
-                    "overall_speedup": float(normalized["overall_speedup"]),
+                    "years": float(row["years"]),
+                    "samples": int(row["samples"]),
+                    "bridge_total_seconds": float(row["bridge_total_seconds"]),
+                    "ias15_total_seconds": float(row["ias15_total_seconds"]),
+                    "overall_speedup": float(row["overall_speedup"]),
                 }
             )
     return rows
 
 
 def save_fig(fig, path):
-    if plt is None:
-        return
     fig.tight_layout()
     fig.savefig(path, dpi=200)
     plt.close(fig)
 
 
 def plot_sweep(rows, outdir):
-    if plt is None:
-        return
     years = [row["years"] for row in rows]
     bridge_total = [row["bridge_total_seconds"] for row in rows]
     ias15_total = [row["ias15_total_seconds"] for row in rows]
@@ -112,10 +103,7 @@ def main():
 
     plot_sweep(rows, outdir)
     write_summary(rows, outdir)
-    if plt is None:
-        print(f"Wrote sweep summary to {outdir} (matplotlib not installed, skipped plots)")
-    else:
-        print(f"Wrote sweep plots to {outdir}")
+    print(f"Wrote sweep plots to {outdir}")
 
 
 if __name__ == "__main__":
