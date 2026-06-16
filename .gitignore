@@ -17,5 +17,4 @@ validation/solar_system_ias15/run_parameter_sweep.ps1
 *.exp
 *.pdb
 *.ilk
-validation/solar_system_ias15/run_efficiency_sweep.ps1
-validation/solar_system_ias15/run_parameter_sweep.ps1
+.understand-anything/

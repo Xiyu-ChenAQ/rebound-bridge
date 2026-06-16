@@ -22,6 +22,7 @@ rebound_bridge/
     bench_whfast_bridge.c
     plot_solar_system_ias15.py
     plot_efficiency_sweep.py
+    run.ps1
     out_2000yr/
     out_20000yr/
     benchmark_figures/
