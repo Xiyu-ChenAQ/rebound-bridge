@@ -76,18 +76,14 @@ static int bridge_error(const char* msg) {
 
 int reb_bridge_set_integrator_whfast(struct reb_simulation* sim) {
     if (!sim) return bridge_error("sim is NULL");
-    struct reb_integrator_whfast_state* whfast =
-        (struct reb_integrator_whfast_state*)reb_simulation_set_integrator(sim, "whfast");
-    if (!whfast) return bridge_error("failed to set REBOUND integrator to whfast");
-    whfast->safe_mode = 1;
+    sim->integrator = REB_INTEGRATOR_WHFAST;
+    sim->ri_whfast.safe_mode = 1;
     return 0;
 }
 
 int reb_bridge_set_integrator_ias15(struct reb_simulation* sim) {
     if (!sim) return bridge_error("sim is NULL");
-    struct reb_integrator_ias15_state* ias15 =
-        (struct reb_integrator_ias15_state*)reb_simulation_set_integrator(sim, "ias15");
-    if (!ias15) return bridge_error("failed to set REBOUND integrator to ias15");
+    sim->integrator = REB_INTEGRATOR_IAS15;
     return 0;
 }
 
