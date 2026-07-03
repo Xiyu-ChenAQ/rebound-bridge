@@ -9,59 +9,19 @@ project(
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-include(FetchContent)
 
 option(REBOUND_BRIDGE_BUILD_EXAMPLES "Build rebound_bridge example programs" ON)
 option(REBOUND_BRIDGE_BUILD_VALIDATION "Build validation comparison tools" ON)
 option(REBOUND_BRIDGE_INSTALL "Install rebound_bridge targets and headers" ON)
-option(REBOUND_BRIDGE_FETCH_REBOUND "Download REBOUND 5 when REBOUND_SRC_DIR is not set" ON)
+set(REBOUND_BRIDGE_VENDORED_REBOUND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rebound/src")
 
-set(REBOUND_BRIDGE_REBOUND_TAG "5.0.0" CACHE STRING "REBOUND git tag used when fetching REBOUND")
-
-set(_rebound_bridge_default_rebound_src "")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/_deps/rebound-upstream/src/rebound.h")
-    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/_deps/rebound-upstream/src/rebound.h" _rebound_bridge_deps_rebound_h)
-    if(_rebound_bridge_deps_rebound_h MATCHES "reb_simulation_set_integrator")
-        set(_rebound_bridge_default_rebound_src "${CMAKE_CURRENT_SOURCE_DIR}/_deps/rebound-upstream/src")
-    endif()
-    unset(_rebound_bridge_deps_rebound_h)
+if(NOT EXISTS "${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}/rebound.h")
+    message(FATAL_ERROR "Vendored REBOUND source tree is missing rebound.h: ${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}")
 endif()
 
-set(
-    REBOUND_SRC_DIR
-    "${_rebound_bridge_default_rebound_src}"
-    CACHE PATH
-    "Path to the REBOUND C source directory containing rebound.h"
-)
-
-if(NOT REBOUND_SRC_DIR)
-    if(REBOUND_BRIDGE_FETCH_REBOUND)
-        FetchContent_Declare(
-            rebound_upstream
-            GIT_REPOSITORY https://github.com/hannorein/rebound.git
-            GIT_TAG ${REBOUND_BRIDGE_REBOUND_TAG}
-        )
-        FetchContent_MakeAvailable(rebound_upstream)
-        set(REBOUND_SRC_DIR "${rebound_upstream_SOURCE_DIR}/src")
-    else()
-        message(FATAL_ERROR "Set REBOUND_SRC_DIR to a REBOUND 5 src directory, e.g. -DREBOUND_SRC_DIR=/path/to/rebound/src")
-    endif()
-endif()
-
-get_filename_component(REBOUND_SRC_DIR "${REBOUND_SRC_DIR}" ABSOLUTE)
-if(NOT EXISTS "${REBOUND_SRC_DIR}/rebound.h")
-    message(FATAL_ERROR "REBOUND_SRC_DIR must contain rebound.h: ${REBOUND_SRC_DIR}")
-endif()
-
-file(READ "${REBOUND_SRC_DIR}/rebound.h" _rebound_bridge_rebound_h)
-if(NOT _rebound_bridge_rebound_h MATCHES "reb_simulation_set_integrator")
-    message(FATAL_ERROR "rebound_bridge requires REBOUND 5.x. REBOUND_SRC_DIR does not provide reb_simulation_set_integrator(): ${REBOUND_SRC_DIR}")
-endif()
-unset(_rebound_bridge_rebound_h)
-
-file(GLOB REBOUND_BRIDGE_REBOUND_SOURCES CONFIGURE_DEPENDS "${REBOUND_SRC_DIR}/*.c")
+file(GLOB REBOUND_BRIDGE_REBOUND_SOURCES CONFIGURE_DEPENDS "${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}/*.c")
 if(NOT REBOUND_BRIDGE_REBOUND_SOURCES)
-    message(FATAL_ERROR "No REBOUND C sources found in REBOUND_SRC_DIR: ${REBOUND_SRC_DIR}")
+    message(FATAL_ERROR "No vendored REBOUND C sources found in ${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}")
 endif()
 
 add_library(rebound_bridge_rebound STATIC ${REBOUND_BRIDGE_REBOUND_SOURCES})
@@ -69,7 +29,7 @@ add_library(rebound_bridge::rebound ALIAS rebound_bridge_rebound)
 target_include_directories(
     rebound_bridge_rebound
     PUBLIC
-        $<BUILD_INTERFACE:${REBOUND_SRC_DIR}>
+        $<BUILD_INTERFACE:${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(rebound_bridge_rebound PUBLIC c_std_99)
@@ -146,7 +106,7 @@ if(REBOUND_BRIDGE_INSTALL)
     )
 
     install(
-        DIRECTORY "${REBOUND_SRC_DIR}/"
+        DIRECTORY "${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}/"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
         FILES_MATCHING PATTERN "*.h"
     )
