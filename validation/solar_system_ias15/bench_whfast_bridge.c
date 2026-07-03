@@ -6,13 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "rebound_bridge.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <time.h>
 #endif
-
-#include "rebound_bridge.h"
 
 enum main_body {
     MAIN_EARTH_MOON_HOST = 3,

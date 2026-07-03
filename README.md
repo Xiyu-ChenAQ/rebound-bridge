@@ -21,9 +21,9 @@ The Earth-Moon helpers are examples only.  The core API works with any
 
 ## Using REBOUND
 
-`rebound_bridge` is built against the REBOUND 5 C source tree.  By default,
-CMake downloads REBOUND 5.0.0 from the upstream REBOUND repository and compiles
-it as part of the build.
+`rebound_bridge` vendors the REBOUND C source tree under
+`third_party/rebound/src` and builds it as part of this repository. A normal
+build does not download REBOUND and does not require an external source path.
 
 The default build is:
 
@@ -32,22 +32,9 @@ cmake -S . -B build
 cmake --build build --config Release
 ```
 
-If you already have a local REBOUND 5 source tree, pass the directory that
-contains `rebound.h` and the REBOUND `.c` files:
-
-```powershell
-cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
-cmake --build build --config Release
-```
-
-If this repository contains `_deps/rebound-upstream/src/rebound.h` and that
-copy provides the REBOUND 5 API, CMake uses it automatically.  Older REBOUND 4
-source trees are rejected.
-
 The build creates two static targets:
 
-- `rebound_bridge::rebound` compiles the REBOUND C sources from
-  `REBOUND_SRC_DIR`.
+- `rebound_bridge::rebound` compiles the vendored REBOUND C sources.
 - `rebound_bridge::rebound_bridge` compiles this bridge library and links it
   against `rebound_bridge::rebound`.
 
@@ -60,8 +47,8 @@ target_link_libraries(my_target PRIVATE rebound_bridge::rebound_bridge)
 Manual builds need both include paths and both source sets:
 
 ```powershell
-cl /Iinclude /IC:\path\to\rebound\src ^
-  examples\solar_system_bridge.c src\rebound_bridge.c C:\path\to\rebound\src\*.c
+cl /Iinclude /Ithird_party\rebound\src ^
+  examples\solar_system_bridge.c src\rebound_bridge.c third_party\rebound\src\*.c
 ```
 
 At runtime, users still create normal REBOUND `struct reb_simulation*`
@@ -221,17 +208,10 @@ comparison workflow for the solar-system setup.
 
 ## CMake Build
 
-Configure with the default REBOUND 5 download:
+Configure with the vendored REBOUND source tree:
 
 ```powershell
 cmake -S . -B build
-cmake --build build --config Release
-```
-
-Use a local REBOUND 5 source tree instead:
-
-```powershell
-cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
 cmake --build build --config Release
 ```
 
@@ -250,14 +230,11 @@ Example MSVC build from this directory:
 
 ```powershell
 mkdir build
-$env:REBOUND_SRC = "C:\path\to\rebound\src"
-cl /nologo /Iinclude /I$env:REBOUND_SRC /Fo:build\ examples\jovian_laplace_bridge.c src\rebound_bridge.c $env:REBOUND_SRC\*.c /Fe:build\jovian_laplace_bridge.exe
+cl /nologo /Iinclude /Ithird_party\rebound\src /Fo:build\ examples\jovian_laplace_bridge.c src\rebound_bridge.c third_party\rebound\src\*.c /Fe:build\jovian_laplace_bridge.exe
 build\jovian_laplace_bridge.exe
 ```
 
 ## License
 
-`rebound_bridge` is licensed under GPL-3.0-or-later.  It builds against
-REBOUND, which is also GPL-3.0-or-later.  The default CMake configuration
-downloads REBOUND 5.0.0 from the upstream REBOUND repository and compiles it
-into the local build.
+`rebound_bridge` is licensed under GPL-3.0-or-later.  It vendors and builds
+against REBOUND, which is also GPL-3.0-or-later.

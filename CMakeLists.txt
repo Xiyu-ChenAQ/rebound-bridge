@@ -13,15 +13,15 @@ include(CMakePackageConfigHelpers)
 option(REBOUND_BRIDGE_BUILD_EXAMPLES "Build rebound_bridge example programs" ON)
 option(REBOUND_BRIDGE_BUILD_VALIDATION "Build validation comparison tools" ON)
 option(REBOUND_BRIDGE_INSTALL "Install rebound_bridge targets and headers" ON)
+set(REBOUND_BRIDGE_VENDORED_REBOUND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rebound/src")
 
-set(REBOUND_BRIDGE_REBOUND_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rebound/src")
-if(NOT EXISTS "${REBOUND_BRIDGE_REBOUND_SRC_DIR}/rebound.h")
-    message(FATAL_ERROR "Vendored REBOUND source is missing rebound.h: ${REBOUND_BRIDGE_REBOUND_SRC_DIR}/rebound.h")
+if(NOT EXISTS "${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}/rebound.h")
+    message(FATAL_ERROR "Vendored REBOUND source tree is missing rebound.h: ${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}")
 endif()
 
-file(GLOB REBOUND_BRIDGE_REBOUND_SOURCES CONFIGURE_DEPENDS "${REBOUND_BRIDGE_REBOUND_SRC_DIR}/*.c")
+file(GLOB REBOUND_BRIDGE_REBOUND_SOURCES CONFIGURE_DEPENDS "${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}/*.c")
 if(NOT REBOUND_BRIDGE_REBOUND_SOURCES)
-    message(FATAL_ERROR "No vendored REBOUND C sources found in: ${REBOUND_BRIDGE_REBOUND_SRC_DIR}")
+    message(FATAL_ERROR "No vendored REBOUND C sources found in ${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}")
 endif()
 
 add_library(rebound_bridge_rebound STATIC ${REBOUND_BRIDGE_REBOUND_SOURCES})
@@ -29,7 +29,7 @@ add_library(rebound_bridge::rebound ALIAS rebound_bridge_rebound)
 target_include_directories(
     rebound_bridge_rebound
     PUBLIC
-        $<BUILD_INTERFACE:${REBOUND_BRIDGE_REBOUND_SRC_DIR}>
+        $<BUILD_INTERFACE:${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(rebound_bridge_rebound PUBLIC c_std_99)
@@ -106,7 +106,7 @@ if(REBOUND_BRIDGE_INSTALL)
     )
 
     install(
-        DIRECTORY "${REBOUND_BRIDGE_REBOUND_SRC_DIR}/"
+        DIRECTORY "${REBOUND_BRIDGE_VENDORED_REBOUND_DIR}/"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
         FILES_MATCHING PATTERN "*.h"
     )

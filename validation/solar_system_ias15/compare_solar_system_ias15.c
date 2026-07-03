@@ -12,11 +12,11 @@
 #include <string.h>
 #include <time.h>
 
+#include "rebound_bridge.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
-
-#include "rebound_bridge.h"
 
 enum main_body {
     MAIN_SUN = 0,
