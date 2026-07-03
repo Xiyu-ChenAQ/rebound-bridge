@@ -9,8 +9,9 @@ Remove the build-time dependency on the REBOUND 5 upstream source tree while
 preserving the REBOUND-style programming model needed by `rebound_bridge`.
 
 The implementation will vendor the relevant REBOUND source code into this
-repository, preserving upstream comments and copyright/license headers in
-copied code. The bridge will compile only the local files it needs instead of
+repository. Upstream comments and copyright/license headers in copied code
+must be preserved verbatim: do not rewrite, translate, reformat, summarize, or
+delete them. The bridge will compile only the local files it needs instead of
 globbing and building the entire REBOUND source directory.
 
 ## Scope
@@ -27,7 +28,7 @@ In scope:
   - `src/integrator/IAS15/ias15.c`
   - `src/integrator/IAS15/ias15.h`
 - Copy REBOUND WHFast implementation code directly and retain all upstream
-  comments in copied blocks.
+  comments verbatim in copied blocks.
 - Split WHFast's Kepler solver into `Keplersolve.c`.
 - Remove CMake `FetchContent`, `REBOUND_SRC_DIR`, and the separate
   `rebound_bridge_rebound` target.
@@ -150,6 +151,8 @@ as possible:
 - Preserve upstream comments in copied code blocks.
 - Preserve upstream copyright/license headers in copied files or copied
   sections.
+- Keep copied upstream comments byte-for-byte where the surrounding code is
+  copied. Do not translate, reword, reorder, or remove upstream comment text.
 - Keep algorithmic structure recognizable to ease future comparison with
   REBOUND.
 - Adapt type names and includes only where needed to target
