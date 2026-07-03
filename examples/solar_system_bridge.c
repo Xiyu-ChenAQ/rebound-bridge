@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-
+/* Xiyu Chen */
 /**
  * solar_system_bridge.c - Multi-subsystem rebound_bridge validation example.
  *
@@ -7,8 +7,6 @@
  * Subsystems: resolved Earth-Moon and Jupiter-Io-Europa-Ganymede systems.
  *
  * Initial vectors are fixed JPL Horizons geometric states for
- * 2026-Jan-01 00:00 TDB.  They make this example deterministic and suitable
- * for validating bridge plumbing; this is not a full ephemeris-grade model.
  */
 
 #include <math.h>
