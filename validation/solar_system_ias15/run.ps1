@@ -1,7 +1,6 @@
 param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
     [string]$BuildDir = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path "build-validation"),
-    [string]$ReboundSrcDir = "",
     [double]$Years = 2000.0,
     [int]$Samples = 2000
 )
@@ -16,11 +15,6 @@ $cmakeArgs = @(
     "-B", $BuildDir,
     "-DREBOUND_BRIDGE_BUILD_VALIDATION=ON"
 )
-if ($ReboundSrcDir -and (Test-Path (Join-Path $ReboundSrcDir "rebound.h"))) {
-    $cmakeArgs += "-DREBOUND_SRC_DIR=$ReboundSrcDir"
-} else {
-    $cmakeArgs += "-UREBOUND_SRC_DIR"
-}
 
 cmake @cmakeArgs
 cmake --build $BuildDir --config Release --target solar_system_ias15_compare
