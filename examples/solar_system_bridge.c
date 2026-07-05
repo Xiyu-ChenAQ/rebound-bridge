@@ -86,7 +86,6 @@ static void add_cartesian(
 
 static struct reb_simulation* make_main_solar_system(void) {
     struct reb_simulation* sim = reb_simulation_create();
-    if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
     if (reb_bridge_set_integrator_whfast(sim) != 0) {
@@ -106,9 +105,9 @@ static struct reb_simulation* make_main_solar_system(void) {
     reb_simulation_add_fmt(sim, "m", 1.0);
     add_cartesian(sim, m_mercury, -2.15201304377667713e-01, -4.09207615700272087e-01, -1.37032695919236600e-02, 7.02443404629697010e+00, -4.28716799788450942e+00, -9.94632701667513053e-01);
     add_cartesian(sim, m_venus, 8.88772496163565545e-02, -7.21762382317080675e-01, -1.50440565750619305e-02, 7.28255910865529810e+00, 8.76733642322772511e-01, -4.08156573658943866e-01);
-    add_cartesian(sim, m_earth_moon, -1.74269758548305093e-01, 9.67785674324191270e-01, -5.68660813624550973e-05, -6.28653514426191418e+00, -1.13726197010495311e+00, 1.00945156455726687e-04);
+    add_cartesian(sim, m_earth_moon, -1.74258179548951841e-01, 9.67812101172537687e-01, -5.43185959007052695e-05, -6.28907787760335690e+00, -1.13619641904038438e+00, 1.15085854523419378e-04);
     add_cartesian(sim, m_mars, 3.40579676862215075e-01, -1.38700201594525407e+00, -3.74172267877010828e-02, 5.15711521620981550e+00, 1.65830921706158052e+00, -9.17089273335817273e-02);
-    add_cartesian(sim, m_jupiter_system, -1.69400303018584597e+00, 4.92888271463623262e+00, 1.74262399033241998e-02, -2.64098245722763814e+00, -7.67587434003239921e-01, 6.22754635347801122e-02);
+    add_cartesian(sim, m_jupiter_system, -1.69400240075433639e+00, 4.92888237470638568e+00, 1.74262370297428894e-02, -2.64080244023013400e+00, -7.67319806325283849e-01, 6.22885142647012779e-02);
     add_cartesian(sim, m_saturn, 9.50734336522187107e+00, 2.57738457802152210e-01, -3.82935528507753087e-01, -1.69141631745304527e-01, 2.03249650346815258e+00, -2.86682018818476998e-02);
     add_cartesian(sim, m_uranus, 9.88031797519427535e+00, 1.68000154098179486e+01, -6.57197991373143220e-02, -1.25149298434788658e+00, 6.61240423623731699e-01, 1.86840216329132620e-02);
     add_cartesian(sim, m_neptune, 2.98721200408889800e+01, 5.18939463241125942e-01, -6.99067175203629043e-01, -2.98764379233138963e-02, 1.15313346010349438e+00, -2.30704057616862752e-02);
@@ -119,7 +118,6 @@ static struct reb_simulation* make_main_solar_system(void) {
 
 static struct reb_simulation* make_sub_earth_moon_horizons(void) {
     struct reb_simulation* sim = reb_simulation_create();
-    if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
     if (reb_bridge_set_integrator_whfast(sim) != 0) {
@@ -136,7 +134,6 @@ static struct reb_simulation* make_sub_earth_moon_horizons(void) {
 
 static struct reb_simulation* make_sub_jovian_horizons(void) {
     struct reb_simulation* sim = reb_simulation_create();
-    if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
     if (reb_bridge_set_integrator_whfast(sim) != 0) {
@@ -264,7 +261,7 @@ int main(void) {
 
     printf("rebound_bridge - solar-system multi-subsystem demo\n");
     printf("==================================================\n");
-    printf("  main bodies       = %zu\n", main_sim->N);
+    printf("  main bodies       = %d\n", main_sim->N);
     printf("  subsystems        = %d\n", reb_bridge_subsystem_count(bridge));
     printf("  integration span  = %.1f yr\n", years);
     printf("  dt_outer          = %.3f days\n", dt_outer * 365.25);
