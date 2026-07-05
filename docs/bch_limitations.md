@@ -403,11 +403,7 @@ the residual fast-binary phase drift.
 
 ## 9. The Correct Interpretation
 
-The conclusion is not:
-
-```text
-BCH is wrong.
-```
+The conclusion is not:BCH is wrong.
 
 The correct conclusion is:
 
