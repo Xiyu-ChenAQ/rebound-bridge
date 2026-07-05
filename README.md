@@ -1,55 +1,74 @@
 # rebound_bridge
 
-An operator-splitting scheduler for coupling independent REBOUND simulations.
+`rebound_bridge` is a small C library for coupling multiple REBOUND
+simulations with an operator-splitting Bridge scheme.
 
-It only depends on the REBOUND C API and can be moved into its own repository or built as a
-separate static/shared library later.
+The library vendors the REBOUND C source tree under `rebound/src`; a normal
+CMake build does not download or locate an external REBOUND installation.
 
 ## Model
 
-`rebound_bridge` coordinates one main REBOUND simulation and one or more
-subsystem simulations.
+The Bridge owns no particles by itself.  It coordinates:
 
-- The main simulation contains slow bodies and one host particle per subsystem.
-- Each subsystem simulation contains the resolved internal bodies around its
-  own barycenter.
-- The bridge applies KDK cross kicks, then advances every REBOUND simulation
-  to the same global time.
+- one main REBOUND simulation containing slow bodies and one host particle per
+  resolved subsystem;
+- one or more subsystem REBOUND simulations containing resolved bodies in each
+  subsystem frame;
+- symmetric cross-kicks between the main system and resolved subsystems.
 
-The Earth-Moon helpers are examples only.  The core API works with any
-`host_index + sub_sim` pair.
+For a fixed-timestep REBOUND integrator such as WHFast:
 
-## Using REBOUND
+- `dt_outer` is the main simulation timestep and Bridge coupling interval;
+- `dt_inner` is the subsystem timestep;
+- `dt_outer / dt_inner` must currently be an integer ratio.
 
-`rebound_bridge` is built against the REBOUND 5 C source tree.  By default,
-CMake downloads REBOUND 5.0.0 from the upstream REBOUND repository and compiles
-it as part of the build.
+## Public Headers
 
-The default build is:
+The only installed public header is `include/rebound_bridge.h`.  It exposes
+the stable Bridge scheduler API.
 
-```powershell
+Example-only helper declarations live in `examples/rebound_bridge_examples.h`
+and are not installed as public API.
+
+## Source Layout
+
+The implementation follows the short naming style used by REBOUND's `src/`
+tree.  Files ending in `_experimental` contain higher-order or force-gradient
+compositions that are still under investigation.
+
+- `src/bridge.c` — lifecycle, configuration, and subsystem registration.
+- `src/bridge_kick.c` — plain Bridge cross-kick kernel.
+- `src/bridge_advance.c` — order-2 KDK advance and stable dispatcher.
+- `src/bridge_eos.c` — EOS LF4_2 advance method.
+- `src/bridge_fg4_experimental.c` — forward force-gradient fourth-order advance.
+- `src/bridge_force_gradient_experimental.c` — force-gradient cross-kick kernel
+  and finite-difference diagnostics.
+- `src/bridge_processor.c` — commutator processor.
+- `src/bridge_internal.h` — private to the library implementation.
+- `examples/bridge_examples.c` — convenience constructors used only by the
+  bundled examples; not compiled into the installed library.
+
+## Build
+
+Default CMake build, which builds the vendored REBOUND static library and the
+Bridge static library:
+
+```sh
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-If you already have a local REBOUND 5 source tree, pass the directory that
-contains `rebound.h` and the REBOUND `.c` files:
-
-```powershell
-cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
-cmake --build build --config Release
-```
-
-If this repository contains `_deps/rebound-upstream/src/rebound.h` and that
-copy provides the REBOUND 5 API, CMake uses it automatically.  Older REBOUND 4
-source trees are rejected.
-
 The build creates two static targets:
 
-- `rebound_bridge::rebound` compiles the REBOUND C sources from
-  `REBOUND_SRC_DIR`.
-- `rebound_bridge::rebound_bridge` compiles this bridge library and links it
+- `rebound_bridge::rebound`, built from vendored `rebound/src/*.c`;
+- `rebound_bridge::rebound_bridge`, built from `src/bridge*.c` and linked
   against `rebound_bridge::rebound`.
+
+Optional examples, validation tools, and tests:
+
+```sh
+cmake -S . -B build -DREBOUND_BRIDGE_BUILD_EXAMPLES=ON -DREBOUND_BRIDGE_BUILD_VALIDATION=ON -DREBOUND_BRIDGE_BUILD_TESTS=ON
+```
 
 Downstream CMake projects should link against:
 
@@ -57,119 +76,29 @@ Downstream CMake projects should link against:
 target_link_libraries(my_target PRIVATE rebound_bridge::rebound_bridge)
 ```
 
-Manual builds need both include paths and both source sets:
+Manual MSVC build from this directory on Windows:
 
 ```powershell
-cl /Iinclude /IC:\path\to\rebound\src ^
-  examples\solar_system_bridge.c src\rebound_bridge.c C:\path\to\rebound\src\*.c
+mkdir build
+cl /nologo /Iinclude /Iexamples /Irebound\src ^
+  examples\solar_system_bridge.c examples\bridge_examples.c src\*.c rebound\src\*.c ^
+  /Fo:build\ /Fe:build\solar_system_bridge.exe
 ```
 
-At runtime, users still create normal REBOUND `struct reb_simulation*`
-instances and choose REBOUND integrators as usual.  The bridge stores pointers
-to those simulations and calls `reb_simulation_integrate()` during each bridge
-step.
+On Unix-like systems, prefer CMake.  If building manually, use the same include
+and source sets with your C compiler and link the math library when needed.
 
-`dt_outer` and `dt_inner` are also written into REBOUND simulations:
+## Platform Support
 
-- `reb_bridge_create(main_sim, dt_outer)` sets `main_sim->dt = dt_outer`.
-- `reb_bridge_add_subsystem(..., sub_sim, dt_inner, ...)` sets
-  `sub_sim->dt = dt_inner`.
+The core library is intended to be platform-neutral C99.  The library sources
+under `src/` do not include `windows.h` and do not require Windows APIs.
 
-For fixed-timestep REBOUND integrators such as WHFast, these values are the
-actual REBOUND timesteps used during the drift integrations.  The bridge then
-uses `dt_outer` as the interval between cross-system kick exchanges.  Therefore
-`dt_outer` is both the main simulation timestep and the bridge coupling
-timestep, while `dt_inner` is the subsystem timestep.  The current API requires
-`dt_outer / dt_inner` to be an integer.
+Platform-specific code is limited to guarded support paths:
 
-## Validation Notes
-
-`rebound_bridge` is a scheduler around REBOUND simulations, not a standalone
-replacement integrator.  A typical configuration uses WHFast inside the main
-simulation and inside each subsystem, while the bridge supplies the symmetric
-KDK coupling between subsystem barycenters and resolved subsystem bodies.
-
-The validation target is long-term structural fidelity rather than pointwise
-agreement with a high-order non-symplectic reference at every output time.
-In practice this means checking that resolved subsystems stay bound, resonant
-structure is preserved, and conserved quantities remain bounded over long
-integrations.
-
-Current validated setups:
-
-- Forward-then-backward integrations return close to the initial state, which
-  checks the time symmetry of the bridge composition.
-- Earth-Moon convergence tests show the expected second-order trend when
-  reducing `dt_outer`.
-- Energy errors are observed as bounded oscillations rather than monotonic
-  drift in the tested Earth-Moon setup.
-- Long runs require backreaction from subsystem kicks to the host particle;
-  one-way coupling produces unacceptable momentum drift.
-- The Jupiter-Io-Europa-Ganymede example keeps the Laplace-angle diagnostic
-  well behaved and serves as the reference multi-body moon-resonance example.
-- The solar-system bridge example resolves both Earth-Moon and the inner
-  Galilean system inside a Sun-plus-eight-planets main simulation, which is
-  the current sandbox-scale validation configuration.
-
-Long-term checks currently included in the repository focus on the solar-system
-setup:
-
-- `validation/solar_system_ias15/out_2000yr/` contains the standard 2000-year
-  comparison figures.
-- `validation/solar_system_ias15/out_20000yr/` contains the longer 20000-year
-  stability run used to verify that the bridge shows bounded oscillatory error
-  rather than secular breakup in this configuration.
-- The bridge is not expected to match IAS15 phase-for-phase over very long
-  spans; instead the important checks are bounded energy and angular-momentum
-  error, stable Earth-Moon separation, and preserved resonant behavior.
-
-IAS15 is used here as a reference trajectory for finite-time residuals and
-diagnostics, not as the design target of the bridge method.  The comparison
-workflow measures energy, angular momentum, Earth-Moon distance, Laplace
-angle, and heliocentric phase/radius residuals for the bridged subsystems.
-
-`dt_outer` controls how often main and subsystem simulations exchange
-perturbations.  `dt_inner` controls the internal REBOUND integration of each
-subsystem.  Once the subsystem is internally resolved, reducing `dt_inner`
-further will not remove bridge coupling error; reducing `dt_outer` is then the
-relevant accuracy knob.
-
-### Solar-System Parameter Choice
-
-The solar-system bridge setup has two resolved subsystems: Earth-Moon and
-Jupiter-Io-Europa-Ganymede.  Parameter sweeps compare runtime, conserved
-quantities, and the Jovian Laplace-angle residual against an IAS15 reference.
-
-The current recommended balanced setting is:
-
-```text
-dt_outer_days    = 0.75
-earth_moon_ratio = 3
-jovian_ratio     = 12
-dt_earth_moon    = 0.25 day
-dt_jovian        = 0.0625 day
-```
-
-This is the setting used by `examples/solar_system_bridge.c`.  In the 20000-year
-bridge-only sweep, it is slower than the most aggressive setting but reduces
-the long-term Laplace-angle residual substantially.
-
-Measured tradeoffs from the local 20000-year tests:
-
-```text
-setting         bridge time   max |Laplace residual|   note
-1d / 5 / 15     185.95 s      16.48 deg                fastest tested stable run
-0.75d / 3 / 10  195.49 s      10.20 deg                small runtime cost, better phase
-0.75d / 3 / 12  209.97 s       7.28 deg                recommended balanced choice
-0.75d / 3 / 15  233.68 s       5.02 deg                more conservative phase choice
-```
-
-Energy and angular-momentum errors remain at the same order of magnitude across
-these runs.  The main accuracy tradeoff is long-term orbital phase, especially
-the Jovian Laplace angle.  Larger outer steps such as `1.5d` are fast but showed
-large Laplace residuals in the 5000-year screen, and non-integer-looking decimal
-steps can require tolerant time synchronization because accumulated floating
-point differences eventually reach a few `1e-12 yr`.
+- `include/rebound_bridge.h` uses `__declspec(...)` only when building a shared
+  library on Windows.
+- `validation/validation_timer.h` uses `QueryPerformanceCounter` on Windows and
+  `clock_gettime` or `timespec_get` elsewhere.
 
 ## Minimal Use
 
@@ -178,86 +107,93 @@ point differences eventually reach a few `1e-12 yr`.
 #include "rebound_bridge.h"
 
 struct reb_bridge* bridge = reb_bridge_create(main_sim, dt_outer);
+reb_bridge_set_method(bridge, REB_BRIDGE_METHOD_EOS_LF4_2);
 reb_bridge_add_subsystem(bridge, host_index, sub_sim, dt_inner, 0);
-reb_bridge_advance(bridge, 1.0);
+reb_bridge_advance(bridge, duration);
 reb_bridge_free(bridge);
 ```
 
+The helper functions `reb_bridge_set_integrator_whfast()` and
+`reb_bridge_set_integrator_ias15()` configure the corresponding REBOUND
+integrator on an existing `struct reb_simulation*`.
+
+## Bridge Methods
+
+- `REB_BRIDGE_METHOD_ORDER2` — symmetric KDK Bridge (2nd order).
+- `REB_BRIDGE_METHOD_EOS_LF4_2` — embedded-operator-splitting LF4_2 (4th order).
+- `REB_BRIDGE_METHOD_EOS_LF8_6_4` — *experimental*; higher-order EOS composition
+  using LF8_6_4 coefficients.  Includes negative substeps; treat as a validation
+  target rather than a default recommendation.
+- `REB_BRIDGE_METHOD_FORWARD_FG4` — *experimental*; forward-only 4th-order
+  force-gradient Bridge kernel.
+
+Advanced cross-kick and corrector controls (`REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT`,
+`REB_BRIDGE_CORRECTOR_COMMUTATOR_AB`, `reb_bridge_force_gradient_finite_difference_check`)
+are also declared in `rebound_bridge.h`.  Their coefficients and generality are
+still under investigation; treat them as experimental.
+
 ## Examples
 
-`examples/earth_moon_bridge.c` demonstrates bridge convergence for a resolved
-Earth-Moon subsystem.
+Bundled examples are enabled by `REBOUND_BRIDGE_BUILD_EXAMPLES=ON`:
 
-`examples/jovian_laplace_bridge.c` builds a resolved Jupiter-Io-Europa-Ganymede
-subsystem from fixed JPL Horizons vectors for a stable Laplace-resonance
-demonstration and prints the period ratios plus the Laplace angle diagnostic.
+- `examples/earth_moon_bridge.c` uses the example convenience constructors for
+  a simple Earth-Moon Bridge demonstration.
+- `examples/jovian_laplace_bridge.c` builds a resolved
+  Jupiter-Io-Europa-Ganymede subsystem and prints Laplace-resonance diagnostics.
+- `examples/solar_system_bridge.c` builds a Sun plus eight-planet main
+  simulation with Earth-Moon and inner Galilean resolved subsystems.
 
-`examples/solar_system_bridge.c` builds a Sun plus eight-planet main simulation
-with two resolved bridge subsystems: Earth-Moon and
-Jupiter-Io-Europa-Ganymede. It is intended to validate multi-subsystem bridge
-plumbing for solar-system-scale sandbox simulations. The example uses a larger
-outer timestep for planetary motion and smaller inner timesteps for the resolved
-moon subsystems.  The example uses the balanced sweep setting documented above:
-`dt_outer = 0.75 day`, Earth-Moon ratio `3`, and Jovian ratio `12`.
+Example-only declarations are in `examples/rebound_bridge_examples.h` so the
+public `include/` directory stays focused on library API.
 
-## Validation Suite
+## Validation
 
-`validation/solar_system_ias15/` contains a standalone bridge-vs-IAS15
-comparison workflow for the solar-system setup.
+Validation tools are enabled by `REBOUND_BRIDGE_BUILD_VALIDATION=ON`.
 
-- `compare_solar_system_ias15.c` runs both the bridge and a direct IAS15
-  reference from the same initial conditions and writes a CSV of diagnostics.
-- `plot_solar_system_ias15.py` renders energy, angular-momentum, distance, and
-  phase/residual plots plus long-run stability and envelope plots from that CSV.
-- `run.ps1` builds the validation target, runs the default 2000-year
-  comparison, and generates the figures in
-  `validation/solar_system_ias15/out_2000yr/`.
-- `out_20000yr/` stores the longer 20000-year stability figures for the same
-  solar-system configuration.
-- `bench_whfast_bridge.c` and `plot_efficiency_sweep.py` provide the current
-  runtime comparison workflow.
-- `benchmark_figures/` stores the tracked bridge-vs-IAS15 and
-  bridge-vs-WHFast speed comparison figures and CSV summaries.
+Solar-system validation:
 
-## CMake Build
+- `validation/solar_system_ias15/compare_solar_system_ias15.c` compares Bridge
+  against a direct IAS15 reference and writes diagnostics to CSV.
+- `validation/solar_system_ias15/bench_whfast_bridge.c` benchmarks Bridge and
+  WHFast configurations.
 
-Configure with the default REBOUND 5 download:
+Earth-Moon / Galilean validation:
 
-```powershell
-cmake -S . -B build
-cmake --build build --config Release
+- `validation/earth_moon_whfast_bridge/compare_earth_moon_whfast_bridge.c`
+  compares Bridge, WHFast, and IAS15 on a solar system with two resolved
+  subsystems (Earth-Moon and inner Galilean moons).
+
+Pluto-Charon validation:
+
+- `validation/pluto_charon_binary/compare_pluto_charon.c` validates Bridge on a
+  true binary subsystem.
+- `validation/pluto_charon_binary/bench_pluto_charon.c` benchmarks the same
+  setup.
+
+Run the test suite:
+
+```sh
+cmake -S . -B build-pluto-charon -DREBOUND_BRIDGE_BUILD_TESTS=ON
+cmake --build build-pluto-charon --config Release
+ctest --test-dir build-pluto-charon -C Release --output-on-failure
 ```
 
-Use a local REBOUND 5 source tree instead:
+The CTest suite includes a forward-backward time-reversibility check for the
+public `reb_bridge_step()` KDK step.
 
-```powershell
-cmake -S . -B build -DREBOUND_SRC_DIR="C:\path\to\rebound\src"
-cmake --build build --config Release
-```
+## Notes
 
-Disable examples when building only the library:
+`rebound_bridge` is a scheduler around REBOUND simulations, not a standalone
+replacement integrator.  The usual workflow is to use WHFast or IAS15 inside
+the main and subsystem simulations while the Bridge supplies the cross-system
+operator splitting.
 
-```powershell
-cmake -S . -B build -DREBOUND_BRIDGE_BUILD_EXAMPLES=OFF
-cmake --build build --config Release
-```
-
-The CMake build creates static `rebound` and `rebound_bridge` targets. Link
-downstream CMake code against `rebound_bridge::rebound_bridge` when consuming an
-installed package export.
-
-Example MSVC build from this directory:
-
-```powershell
-mkdir build
-$env:REBOUND_SRC = "C:\path\to\rebound\src"
-cl /nologo /Iinclude /I$env:REBOUND_SRC /Fo:build\ examples\jovian_laplace_bridge.c src\rebound_bridge.c $env:REBOUND_SRC\*.c /Fe:build\jovian_laplace_bridge.exe
-build\jovian_laplace_bridge.exe
-```
+The most important accuracy knob is generally `dt_outer`, because it controls
+how often the main system and subsystems exchange perturbations.  Once a
+subsystem is internally resolved, reducing `dt_inner` further will not remove
+Bridge splitting error.
 
 ## License
 
-`rebound_bridge` is licensed under GPL-3.0-or-later.  It builds against
-REBOUND, which is also GPL-3.0-or-later.  The default CMake configuration
-downloads REBOUND 5.0.0 from the upstream REBOUND repository and compiles it
-into the local build.
+`rebound_bridge` is licensed under GPL-3.0-or-later.  It vendors and builds
+against REBOUND, which is also GPL-3.0-or-later.

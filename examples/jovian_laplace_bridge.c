@@ -27,7 +27,6 @@ static double wrap_degrees(double angle) {
 
 static struct reb_simulation* make_main_sun_jupiter(void) {
     struct reb_simulation* sim = reb_simulation_create();
-    if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
     if (reb_bridge_set_integrator_whfast(sim) != 0) {
@@ -57,7 +56,6 @@ static void add_moon(
 
 static struct reb_simulation* make_sub_jovian_laplace(void) {
     struct reb_simulation* sim = reb_simulation_create();
-    if (!sim) return NULL;
 
     sim->G = REB_BRIDGE_G_AU_YR_MSUN;
     if (reb_bridge_set_integrator_whfast(sim) != 0) {

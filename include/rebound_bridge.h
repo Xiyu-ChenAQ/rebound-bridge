@@ -34,26 +34,60 @@ extern "C" {
 
 struct reb_bridge;
 
-struct reb_bridge_body_state {
-    double x, y, z;
-    double vx, vy, vz;
-    double m;
+/**
+ * Bridge operator compositions.
+ *
+ * Stable for production use:
+ *   ORDER2      - 2nd-order symmetric (Verlet-style) bridge.
+ *   EOS_LF4_2   - 4th-order EOS-LF composition (Blanes & Casas).
+ *
+ * Experimental / validation targets only - implementations live in
+ * src/bridge_fg4_experimental.c and src/bridge_force_gradient_experimental.c:
+ *   EOS_LF8_6_4 - 8th-order EOS-LF composition; extra substeps, not faster in practice.
+ *   FORWARD_FG4 - 4th-order force-gradient forward scheme; requires second
+ *                 force-gradient evaluation per step.
+ */
+enum reb_bridge_method {
+    REB_BRIDGE_METHOD_INVALID     = -1,
+    REB_BRIDGE_METHOD_ORDER2      =  0,
+    REB_BRIDGE_METHOD_EOS_LF4_2   =  1,
+    REB_BRIDGE_METHOD_EOS_LF8_6_4 =  2, /* experimental */
+    REB_BRIDGE_METHOD_FORWARD_FG4 =  3  /* experimental */
 };
 
-struct reb_bridge_snapshot {
-    double time;
-    int host_index;
-    int member_count;
-    double host_primary_distance;
-    double subsystem_barycenter_distance;
-    double subsystem_internal_distance;
-    struct reb_bridge_body_state host;
-    struct reb_bridge_body_state member0;
-    struct reb_bridge_body_state member1;
+enum reb_bridge_cross_kick_kernel {
+    REB_BRIDGE_CROSS_KICK_INVALID        = -1,
+    REB_BRIDGE_CROSS_KICK_PLAIN          =  0,
+    REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT =  1  /* experimental */
 };
+
+enum reb_bridge_corrector {
+    REB_BRIDGE_CORRECTOR_INVALID       = -1,
+    REB_BRIDGE_CORRECTOR_NONE          =  0,
+    REB_BRIDGE_CORRECTOR_COMMUTATOR_AB =  1  /* experimental */
+};
+
+enum reb_bridge_corrector_direction {
+    REB_BRIDGE_CORRECTOR_INVERSE = -1,
+    REB_BRIDGE_CORRECTOR_FORWARD =  1
+};
+
+struct reb_bridge_force_gradient_check {
+    double max_abs_difference;
+    double max_relative_difference;
+    double max_abs_analytic;
+    double max_abs_finite_difference;
+    double internal_weighted_acc_residual;
+    double main_weighted_acc_residual;
+    double force_gradient_internal_weighted_acc_residual;
+    double force_gradient_main_weighted_acc_residual;
+};
+
 
 REB_BRIDGE_API struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_outer);
 REB_BRIDGE_API void reb_bridge_set_owns_main(struct reb_bridge* bridge, int owns_main_sim);
+REB_BRIDGE_API int reb_bridge_set_method(struct reb_bridge* bridge, enum reb_bridge_method method);
+REB_BRIDGE_API enum reb_bridge_method reb_bridge_get_method(const struct reb_bridge* bridge);
 REB_BRIDGE_API void reb_bridge_free(struct reb_bridge* bridge);
 
 REB_BRIDGE_API int reb_bridge_add_subsystem(
@@ -71,18 +105,34 @@ REB_BRIDGE_API struct reb_simulation* reb_bridge_sub_sim(struct reb_bridge* brid
 REB_BRIDGE_API int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick);
 REB_BRIDGE_API int reb_bridge_step(struct reb_bridge* bridge, double dt);
 REB_BRIDGE_API int reb_bridge_advance(struct reb_bridge* bridge, double duration);
-REB_BRIDGE_API int reb_bridge_snapshot(
-    const struct reb_bridge* bridge,
+REB_BRIDGE_API int reb_bridge_advance_eos_lf4_2(struct reb_bridge* bridge, double duration);
+
+REB_BRIDGE_API int reb_bridge_set_cross_kick_kernel(
+    struct reb_bridge* bridge,
+    enum reb_bridge_cross_kick_kernel kernel
+);
+REB_BRIDGE_API enum reb_bridge_cross_kick_kernel reb_bridge_get_cross_kick_kernel(const struct reb_bridge* bridge);
+REB_BRIDGE_API int reb_bridge_set_force_gradient_scale(struct reb_bridge* bridge, double scale);
+REB_BRIDGE_API double reb_bridge_get_force_gradient_scale(const struct reb_bridge* bridge);
+
+REB_BRIDGE_API int reb_bridge_set_corrector(struct reb_bridge* bridge, enum reb_bridge_corrector corrector);
+REB_BRIDGE_API enum reb_bridge_corrector reb_bridge_get_corrector(const struct reb_bridge* bridge);
+REB_BRIDGE_API int reb_bridge_set_corrector_scale(struct reb_bridge* bridge, double scale);
+REB_BRIDGE_API double reb_bridge_get_corrector_scale(const struct reb_bridge* bridge);
+REB_BRIDGE_API int reb_bridge_apply_corrector(
+    struct reb_bridge* bridge,
+    enum reb_bridge_corrector_direction direction
+);
+
+REB_BRIDGE_API int reb_bridge_force_gradient_finite_difference_check(
+    struct reb_bridge* bridge,
     int subsystem_index,
-    struct reb_bridge_snapshot* out
+    double epsilon,
+    struct reb_bridge_force_gradient_check* out
 );
 
 REB_BRIDGE_API int reb_bridge_set_integrator_whfast(struct reb_simulation* sim);
 REB_BRIDGE_API int reb_bridge_set_integrator_ias15(struct reb_simulation* sim);
-
-REB_BRIDGE_API struct reb_simulation* reb_bridge_make_main_sun_emb(void);
-REB_BRIDGE_API struct reb_simulation* reb_bridge_make_sub_earth_moon(void);
-REB_BRIDGE_API struct reb_bridge* reb_bridge_create_earth_moon(double dt_outer, int sub_ratio);
 
 #ifdef __cplusplus
 }
