@@ -16,7 +16,7 @@ The validation programs compare hierarchical Bridge integrations against IAS15 r
 From the repository root:
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DREBOUND_BRIDGE_BUILD_VALIDATION=ON
 cmake --build build --config Release
 ```
 
@@ -37,7 +37,8 @@ cmake --build build --config Release --target earth_moon_whfast_bridge_compare
 build/Release/earth_moon_whfast_bridge_compare --years 100 --samples 101 --dt-outer-days 0.25 --earth-moon-ratio 20 --jovian-ratio 80 --bridge-method eos-lf4-2
 ```
 
-On single-configuration generators, the executable may be at `build/earth_moon_whfast_bridge_compare`.
+On single-configuration generators such as Ninja or Unix Makefiles, the
+executable may be at `build/earth_moon_whfast_bridge_compare`.
 
 The checked-in summary figure is:
 

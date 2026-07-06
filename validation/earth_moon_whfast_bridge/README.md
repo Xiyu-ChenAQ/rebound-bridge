@@ -15,7 +15,7 @@ The purpose is to test whether a hierarchical Bridge factorization is better mat
 From the repository root:
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DREBOUND_BRIDGE_BUILD_VALIDATION=ON
 cmake --build build --config Release --target earth_moon_whfast_bridge_compare
 ```
 
@@ -25,13 +25,10 @@ Then run the executable directly. Example:
 build/Release/earth_moon_whfast_bridge_compare --years 100 --samples 101 --dt-outer-days 0.25 --earth-moon-ratio 20 --jovian-ratio 80 --bridge-method eos-lf4-2
 ```
 
-On single-configuration generators, the executable may be at `build/earth_moon_whfast_bridge_compare`.
+On single-configuration generators such as Ninja or Unix Makefiles, the
+executable may be at `build/earth_moon_whfast_bridge_compare`.
 
-The checked-in `results/` directory contains the current CSV and PNG summary. The plotting helper can redraw the figure from the CSV:
-
-```sh
-python validation/earth_moon_whfast_bridge/plot_earth_moon_whfast_bridge.py --csv validation/earth_moon_whfast_bridge/results/earth_moon_whfast_bridge_triangle.csv --outdir validation/earth_moon_whfast_bridge/results
-```
+The checked-in `results/` directory contains the current CSV and PNG summary.
 
 ## Current 100-year result
 

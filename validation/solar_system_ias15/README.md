@@ -10,9 +10,14 @@ The main C programs are:
 Build and run an example case from the repository root:
 
 ```sh
-cmake -S . -B build
+cmake -S . -B build -DREBOUND_BRIDGE_BUILD_VALIDATION=ON
 cmake --build build --config Release --target solar_system_ias15_compare
 build/Release/solar_system_ias15_compare --years 100 --samples 101 --csv validation/solar_system_ias15/out/solar_system_ias15_compare.csv
 ```
 
-Generated output directories such as `out_2000yr/`, `out_20000yr/`, and `benchmark_figures/` are historical or regenerated results. They are not the recommended first entry point for reviewers; use `../earth_moon_whfast_bridge/` for the compact WHFast/Bridge/IAS15 triangle comparison.
+On single-configuration generators such as Ninja or Unix Makefiles, the
+executable may be at `build/solar_system_ias15_compare`.
+
+Large generated output directories are not checked in.  For a compact first
+review, use `../earth_moon_whfast_bridge/` for the WHFast/Bridge/IAS15 triangle
+comparison.
