@@ -1,10 +1,31 @@
 # rebound_bridge
 
-`rebound_bridge` is a small C library for coupling multiple REBOUND
-simulations with an operator-splitting Bridge scheme.
+`rebound_bridge` is a small experimental C library for hierarchical REBOUND
+simulations with resolved fast subsystems.
+
+The goal is not to replace WHFast in ordinary single-center planetary systems.
+Instead, the library applies a Bridge split when a strongly bound subsystem
+requires a smaller internal timestep than the slower outer system.  The
+practical default method is an EOS-inspired LF4_2 Bridge composition; the
+standard second-order KDK Bridge step is kept as a simple baseline.
 
 The library vendors the REBOUND C source tree under `rebound/src`; a normal
 CMake build does not download or locate an external REBOUND installation.
+
+## Intended Regime
+
+Use WHFast directly for near-Keplerian systems with a single dominant center
+and no resolved subsystems.  Use Bridge when:
+
+- the main system can be advanced with a relatively large outer timestep;
+- one or more bound subsystems require a much smaller internal timestep;
+- the coupling between each subsystem and the outer system is weak compared
+  with the subsystem's internal binding.
+
+If no subsystems are registered, Bridge cross-kicks are no-ops and
+`reb_bridge_advance()` reduces to advancing the configured main REBOUND
+simulation.  With a WHFast main simulation, this is effectively WHFast with a
+small scheduler wrapper.
 
 ## Model
 
@@ -119,8 +140,11 @@ integrator on an existing `struct reb_simulation*`.
 
 ## Bridge Methods
 
-- `REB_BRIDGE_METHOD_ORDER2` — symmetric KDK Bridge (2nd order).
-- `REB_BRIDGE_METHOD_EOS_LF4_2` — embedded-operator-splitting LF4_2 (4th order).
+- `REB_BRIDGE_METHOD_EOS_LF4_2` — recommended practical default.  This is an
+  EOS-inspired fourth-order symmetric drift-kick Bridge composition with
+  positive drift substeps.
+- `REB_BRIDGE_METHOD_ORDER2` — symmetric KDK Bridge (2nd order), useful as a
+  baseline and for simple validation.
 - `REB_BRIDGE_METHOD_EOS_LF8_6_4` — *experimental*; higher-order EOS composition
   using LF8_6_4 coefficients.  Includes negative substeps; treat as a validation
   target rather than a default recommendation.
