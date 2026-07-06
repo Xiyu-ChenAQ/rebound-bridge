@@ -2,17 +2,8 @@ build/
 build-*/
 cmake-build-*/
 _deps/
-docs/superpowers/
 __pycache__/
 *.py[cod]
-validation/solar_system_ias15/out/
-validation/solar_system_ias15/out_*/
-validation/solar_system_ias15/benchmark_figures/
-validation/pluto_charon_binary/benchmark_figures/
-validation/route*_*/
-# validation run scripts and output plots (generated, not source)
-validation/*/run*.ps1
-validation/*/plot_*.py
 *.obj
 *.o
 *.exe
@@ -21,5 +12,3 @@ validation/*/plot_*.py
 *.exp
 *.pdb
 *.ilk
-.understand-anything/
-MNRAS/
