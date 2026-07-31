@@ -7,13 +7,14 @@ The short version is:
 
 - BCH analysis is useful for understanding ideal Hamiltonian splittings.
 - The current Bridge code uses host-relative subsystem variables.
-- Those variables are not written as one explicit global canonical coordinate
-  system.
+- Those variables define a constrained symplectic representation for the
+  ordinary Bridge split, but they are not independent particle-wise canonical
+  pairs.
 - Therefore the standard Cartesian BCH force-gradient coefficients cannot be
   applied blindly to the current implementation.
 
-This does not mean BCH theory is wrong.  It means the implemented variables do
-not yet satisfy the assumptions needed for the standard textbook derivation.
+This limitation concerns the experimental force-gradient operator.  It does
+not invalidate the position-only residual kick or the EOS LF4_2 composition.
 
 ## What BCH Assumes
 
@@ -22,12 +23,12 @@ on the same canonical phase space.  In practice that means:
 
 - both parts of the split act on the same coordinates and momenta;
 - the coordinates are canonical;
-- the drift and kick maps are exact flows of the split Hamiltonians;
-- the kinetic energy has the usual diagonal Cartesian mass metric.
+- the drift and kick maps are exact flows of the split Hamiltonians.
 
-Those assumptions are clean in a single global Cartesian system.  They are not
-automatic in a Bridge implementation that stores each subsystem in a
-host-relative frame.
+The commonly used Cartesian force-gradient formula makes an additional
+assumption: the kinetic energy has the usual diagonal mass metric.  That
+simplification is automatic in inertial Cartesian coordinates but not in a
+redundant, constrained set of internal coordinates.
 
 ## What the Current Bridge Does
 
@@ -40,10 +41,19 @@ The current implementation coordinates separate REBOUND simulations:
 For a subsystem member, the global state is reconstructed from the host state
 plus the member's relative state.
 
-This is a practical and useful representation, but it is not the same thing as
-declaring one global canonical Hamiltonian split.  In relative variables, the
-kinetic energy generally has a non-diagonal mass metric.  The simple Cartesian
-force-gradient expression assumes the diagonal case.
+Let the host carry the subsystem centre-of-mass variables, and let the internal
+positions and momenta satisfy their mass-weighted constraints.  The canonical
+one-form then separates into centre-of-mass and internal terms.  Thus the
+constraint surface supplies the symplectic phase space needed for the ordinary
+Hamiltonian split.  The residual cross Hamiltonian depends only on positions,
+so its flow is the velocity kick implemented by the code.  Registration checks
+the constraints; the integrator does not repeatedly project the subsystem back
+onto them.
+
+This result is sufficient for KDK and LF4_2.  It does not by itself identify the
+correct force-gradient commutator in the redundant internal variables.  After
+eliminating the constraints, the independent internal coordinates need not
+retain the diagonal Cartesian mass metric assumed by the simple formula.
 
 That is the main limitation: the force-gradient vector computed by the code can
 be internally consistent with the programmed cross-kick, while still not being
@@ -94,7 +104,10 @@ control knob for the remaining fast-binary phase drift.
 The correct interpretation is conservative:
 
 - The current Bridge implementation is useful and stable in the tested cases.
-- EOS LF4_2 gives a real improvement for fast-binary phase behavior.
+- The position-only residual is an exact kick on the constrained phase space.
+- EOS LF4_2 is a valid outer composition; it is symplectic when its component
+  maps are symplectic, and its generalized-order scaling requires component
+  integration errors to remain below the outer error.
 - The experimental force-gradient derivative is internally consistent with the
   current cross-kick map.
 - The current code should not claim that forward FG4 solves the fast-binary
@@ -108,18 +121,16 @@ This is why the force-gradient code remains in `_experimental.c` files.
 
 A rigorous BCH-based high-order Bridge would need one of these routes:
 
-1. Rewrite the Bridge in explicit canonical variables, such as a Jacobi-like or
-   democratic-heliocentric-like coordinate system, and derive the correct mass
-   metric.
-2. Build a global Cartesian prototype that expands all subsystem members into
-   one phase space, applies the high-order kernel there, and then studies how
-   to project back safely.
-3. Use the current EOS LF4_2 method as the practical default and treat any
-   remaining fast-binary phase calibration as empirical rather than BCH-proven.
+1. Derive the force-gradient commutator directly on the constrained phase
+   space, including the projected inverse mass metric.
+2. Introduce independent hierarchical Jacobi-like coordinates and derive the
+   same operator there.
+3. Build a global Cartesian prototype, where the standard mass metric applies,
+   and compare its force-gradient map with the constrained implementation.
 
 For this repository, the recommended method is currently
 `REB_BRIDGE_METHOD_EOS_LF4_2`.
 
-The open research question is whether a resolved-subsystem Bridge can be
-formulated in explicit canonical variables so that BCH, force-gradient, or
-processor theory applies directly to fast hierarchical binaries.
+The open research question is whether the experimental force-gradient vector
+is the canonical double commutator of the constrained Bridge Hamiltonian, or
+must be modified by the reduced mass metric.

@@ -37,16 +37,32 @@ The Bridge owns no particles by itself.  It coordinates:
   subsystem frame;
 - symmetric cross-kicks between the main system and resolved subsystems.
 
+Each host particle carries its subsystem's barycentric position, velocity, and
+total mass.  The corresponding subsystem arrays contain host-relative internal
+coordinates and velocities, so their mass-weighted center-of-mass position and
+velocity must both be zero.  Individual subsystem particle masses must be
+finite and non-negative.  The subsystem total mass and matching host mass must
+be finite, strictly positive, and equal.  These registration invariants prevent
+the subsystem center-of-mass degrees of freedom from being duplicated between
+the main and subsystem simulations.
+
 For a fixed-timestep REBOUND integrator such as WHFast:
 
 - `dt_outer` is the main simulation timestep and Bridge coupling interval;
-- `dt_inner` is the subsystem timestep;
+- `dt_inner` is the nominal maximum subsystem timestep;
 - `dt_outer / dt_inner` must currently be an integer ratio.
+
+For LF compositions, an individual drift coefficient is generally
+incommensurate with `dt_inner`.  Each fixed-integrator drift segment is split
+into equal signed substeps no larger than `dt_inner`, so a forward segment and
+its reverse use the same number of steps with opposite signs.  Adaptive
+integrators continue to integrate directly to the segment target.
 
 ## Public Headers
 
-The only installed public header is `include/rebound_bridge.h`.  It exposes
-the stable Bridge scheduler API.
+The only installed public header is `src/include/rebound_bridge.h`.  It is
+installed as `include/rebound_bridge.h` and exposes the stable Bridge scheduler
+API.
 
 Example-only helper declarations live in `examples/rebound_bridge_examples.h`
 and are not installed as public API.
@@ -101,7 +117,7 @@ Manual MSVC build from this directory on Windows:
 
 ```powershell
 mkdir build
-cl /nologo /Iinclude /Iexamples /Irebound\src ^
+cl /nologo /Isrc\include /Iexamples /Irebound\src ^
   examples\solar_system_bridge.c examples\bridge_examples.c src\*.c rebound\src\*.c ^
   /Fo:build\ /Fe:build\solar_system_bridge.exe
 ```
@@ -116,7 +132,7 @@ under `src/` do not include `windows.h` and do not require Windows APIs.
 
 Platform-specific code is limited to guarded support paths:
 
-- `include/rebound_bridge.h` uses `__declspec(...)` only when building a shared
+- `src/include/rebound_bridge.h` uses `__declspec(...)` only when building a shared
   library on Windows.
 - `validation/validation_timer.h` uses `QueryPerformanceCounter` on Windows and
   `clock_gettime` or `timespec_get` elsewhere.
@@ -141,8 +157,10 @@ integrator on an existing `struct reb_simulation*`.
 ## Bridge Methods
 
 - `REB_BRIDGE_METHOD_EOS_LF4_2` — recommended practical default.  This is an
-  EOS-inspired fourth-order symmetric drift-kick Bridge composition with
-  positive drift substeps.
+  EOS-inspired symmetric drift-kick Bridge composition with positive drift
+  substeps and generalized order `(4,2)`.  For `H = A + epsilon B`, its global
+  splitting error over a fixed integration interval has leading structure
+  `O(epsilon h^4 + epsilon^2 h^2)`; it is not unconditionally fourth order.
 - `REB_BRIDGE_METHOD_ORDER2` — symmetric KDK Bridge (2nd order), useful as a
   baseline and for simple validation.
 - `REB_BRIDGE_METHOD_EOS_LF8_6_4` — *experimental*; higher-order EOS composition
@@ -156,6 +174,10 @@ Advanced cross-kick and corrector controls (`REB_BRIDGE_CROSS_KICK_FORCE_GRADIEN
 are also declared in `rebound_bridge.h`.  Their coefficients and generality are
 still under investigation; treat them as experimental.
 
+Multiple registered subsystems use monopole--monopole coupling by default.
+`reb_bridge_set_subsystem_coupling()` can instead enable resolved pairwise
+residual kicks between subsystems.
+
 ## Examples
 
 Bundled examples are enabled by `REBOUND_BRIDGE_BUILD_EXAMPLES=ON`:
@@ -168,7 +190,7 @@ Bundled examples are enabled by `REBOUND_BRIDGE_BUILD_EXAMPLES=ON`:
   simulation with Earth-Moon and inner Galilean resolved subsystems.
 
 Example-only declarations are in `examples/rebound_bridge_examples.h` so the
-public `include/` directory stays focused on library API.
+public `src/include/` directory stays focused on library API.
 
 ## Validation
 
@@ -202,8 +224,9 @@ cmake --build build-pluto-charon --config Release
 ctest --test-dir build-pluto-charon -C Release --output-on-failure
 ```
 
-The CTest suite includes a forward-backward time-reversibility check for the
-public `reb_bridge_step()` KDK step.
+The CTest suite includes forward-backward time-reversibility checks for the
+public `reb_bridge_step()` using both ORDER2 and EOS LF(4,2), including a
+resolved multi-body subsystem that catches asymmetric fractional end steps.
 
 ## Notes
 

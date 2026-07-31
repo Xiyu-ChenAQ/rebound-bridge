@@ -39,7 +39,10 @@ struct reb_bridge;
  *
  * Stable for production use:
  *   ORDER2      - 2nd-order symmetric (Verlet-style) bridge.
- *   EOS_LF4_2   - 4th-order EOS-LF composition (Blanes & Casas).
+ *   EOS_LF4_2   - symmetric EOS-LF composition of generalized order (4,2):
+ *                 for H = A + epsilon B, its global splitting error over a
+ *                 fixed integration interval has leading structure
+ *                 O(epsilon h^4 + epsilon^2 h^2).
  *
  * Experimental / validation targets only - implementations live in
  * src/bridge_fg4_experimental.c and src/bridge_force_gradient_experimental.c:
@@ -59,6 +62,12 @@ enum reb_bridge_cross_kick_kernel {
     REB_BRIDGE_CROSS_KICK_INVALID        = -1,
     REB_BRIDGE_CROSS_KICK_PLAIN          =  0,
     REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT =  1  /* experimental */
+};
+
+enum reb_bridge_subsystem_coupling {
+    REB_BRIDGE_SUBSYSTEM_COUPLING_INVALID  = -1,
+    REB_BRIDGE_SUBSYSTEM_COUPLING_MONOPOLE =  0,
+    REB_BRIDGE_SUBSYSTEM_COUPLING_RESOLVED =  1
 };
 
 enum reb_bridge_corrector {
@@ -90,6 +99,15 @@ REB_BRIDGE_API int reb_bridge_set_method(struct reb_bridge* bridge, enum reb_bri
 REB_BRIDGE_API enum reb_bridge_method reb_bridge_get_method(const struct reb_bridge* bridge);
 REB_BRIDGE_API void reb_bridge_free(struct reb_bridge* bridge);
 
+/**
+ * Register a resolved subsystem represented by a host particle in the main
+ * simulation.  Individual subsystem particle masses must be finite and
+ * non-negative.  The subsystem total mass and matching host mass must be
+ * finite, strictly positive, and equal.  Subsystem coordinates and velocities
+ * must be barycentric (zero center-of-mass position and velocity).
+ * For fixed-step integrators, dt_inner is the nominal maximum substep; each
+ * operator-composition segment is divided into equal steps no larger than it.
+ */
 REB_BRIDGE_API int reb_bridge_add_subsystem(
     struct reb_bridge* bridge,
     int host_index,
@@ -103,6 +121,10 @@ REB_BRIDGE_API struct reb_simulation* reb_bridge_main_sim(struct reb_bridge* bri
 REB_BRIDGE_API struct reb_simulation* reb_bridge_sub_sim(struct reb_bridge* bridge, int subsystem_index);
 
 REB_BRIDGE_API int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick);
+/**
+ * Advance one Bridge step of size dt using the method selected with
+ * reb_bridge_set_method().  New bridges default to ORDER2.
+ */
 REB_BRIDGE_API int reb_bridge_step(struct reb_bridge* bridge, double dt);
 REB_BRIDGE_API int reb_bridge_advance(struct reb_bridge* bridge, double duration);
 REB_BRIDGE_API int reb_bridge_advance_eos_lf4_2(struct reb_bridge* bridge, double duration);
@@ -114,6 +136,13 @@ REB_BRIDGE_API int reb_bridge_set_cross_kick_kernel(
 REB_BRIDGE_API enum reb_bridge_cross_kick_kernel reb_bridge_get_cross_kick_kernel(const struct reb_bridge* bridge);
 REB_BRIDGE_API int reb_bridge_set_force_gradient_scale(struct reb_bridge* bridge, double scale);
 REB_BRIDGE_API double reb_bridge_get_force_gradient_scale(const struct reb_bridge* bridge);
+REB_BRIDGE_API int reb_bridge_set_subsystem_coupling(
+    struct reb_bridge* bridge,
+    enum reb_bridge_subsystem_coupling coupling
+);
+REB_BRIDGE_API enum reb_bridge_subsystem_coupling reb_bridge_get_subsystem_coupling(
+    const struct reb_bridge* bridge
+);
 
 REB_BRIDGE_API int reb_bridge_set_corrector(struct reb_bridge* bridge, enum reb_bridge_corrector corrector);
 REB_BRIDGE_API enum reb_bridge_corrector reb_bridge_get_corrector(const struct reb_bridge* bridge);

@@ -13,5 +13,5 @@ Recommended reading order:
 7. `bridge_processor.c` - experimental commutator processor.
 8. `bridge_internal.h` - private structures, inline utilities, and internal function declarations.
 
-The public API is declared in `include/rebound_bridge.h`. Experimental options
+The public API is declared in `src/include/rebound_bridge.h`. Experimental options
 are marked there and implemented in the `_experimental.c` source files.

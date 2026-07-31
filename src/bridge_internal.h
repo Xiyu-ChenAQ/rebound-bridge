@@ -29,6 +29,7 @@ struct reb_bridge {
     int owns_main_sim;
     enum reb_bridge_method method;
     enum reb_bridge_cross_kick_kernel cross_kick_kernel;
+    enum reb_bridge_subsystem_coupling subsystem_coupling;
     double force_gradient_scale;
     enum reb_bridge_corrector corrector;
     double corrector_scale;
@@ -168,7 +169,12 @@ int reb_bridge_internal_apply_cross_kick_with_kernel_for_step(
     enum reb_bridge_cross_kick_kernel kernel
 );
 int reb_bridge_internal_integrate_all_to_target(struct reb_bridge* bridge, double target);
+int reb_bridge_internal_integrate_all_to_target_symmetric(struct reb_bridge* bridge, double target);
 void reb_bridge_internal_snap_all_times(struct reb_bridge* bridge, double time);
+int reb_bridge_internal_step_order2(struct reb_bridge* bridge, double dt);
+int reb_bridge_internal_step_eos_lf4_2(struct reb_bridge* bridge, double dt);
+int reb_bridge_internal_step_eos_lf8_6_4(struct reb_bridge* bridge, double dt);
+int reb_bridge_internal_step_forward_fg4(struct reb_bridge* bridge, double dt);
 
 /* Experimental advance functions - implemented in bridge_fg4_experimental.c. */
 int reb_bridge_advance_eos_lf8_6_4(struct reb_bridge* bridge, double duration);

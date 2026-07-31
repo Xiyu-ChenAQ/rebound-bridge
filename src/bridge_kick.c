@@ -114,10 +114,34 @@ int reb_bridge_internal_check_subsystem_time_sync(
     return 0;
 }
 
+static int subsystem_total_mass(const struct reb_simulation* sim, double* out) {
+    double mt = 0.0;
+    for (int i = 0; i < sim->N; i++) {
+        mt += sim->particles[i].m;
+    }
+    if (mt <= 0.0) return bridge_error("subsystem total mass must be positive");
+    *out = mt;
+    return 0;
+}
+
+static int is_other_subsystem_host(
+    const struct reb_bridge* bridge,
+    const struct reb_bridge_subsystem* current,
+    int main_index
+) {
+    if (bridge->subsystem_coupling != REB_BRIDGE_SUBSYSTEM_COUPLING_RESOLVED) return 0;
+    for (int i = 0; i < bridge->n_subsystems; i++) {
+        const struct reb_bridge_subsystem* other = &bridge->subsystems[i];
+        if (other != current && other->host_index == main_index) return 1;
+    }
+    return 0;
+}
+
 /*
  * Computes differential cross accelerations for one resolved subsystem.
- * Other resolved subsystems enter only through their host particles' monopoles
- * in main_sim; there is no direct resolved-resolved kick between subsystems.
+ * By default, other resolved subsystems enter through their host particles'
+ * monopoles in main_sim.  In resolved subsystem-coupling mode, those hosts are
+ * skipped here and handled by the subsystem-pair residual kick below.
  */
 int reb_bridge_internal_compute_subsystem_cross_acc(
     struct reb_bridge* bridge,
@@ -155,6 +179,7 @@ int reb_bridge_internal_compute_subsystem_cross_acc(
      */
     for (int source_index = 0; source_index < main_sim->N; source_index++) {
         if (source_index == sub->host_index) continue;
+        if (is_other_subsystem_host(bridge, sub, source_index)) continue;
         const struct reb_particle* source = &main_sim->particles[source_index];
         if (source->m == 0.0) continue;
 
@@ -187,6 +212,137 @@ int reb_bridge_internal_compute_subsystem_cross_acc(
     }
 
     main_acc[sub->host_index] = vec_add(main_acc[sub->host_index], host_acc);
+    return 0;
+}
+
+static int apply_resolved_subsystem_pair_cross_kick(
+    struct reb_bridge* bridge,
+    struct reb_bridge_subsystem* a,
+    struct reb_bridge_subsystem* b,
+    double dt_kick
+) {
+    struct reb_simulation* main_sim = bridge->main_sim;
+    struct reb_simulation* sub_a = a->sub_sim;
+    struct reb_simulation* sub_b = b->sub_sim;
+
+    if (reb_bridge_internal_check_subsystem_time_sync(bridge, a) != 0) return -1;
+    if (reb_bridge_internal_check_subsystem_time_sync(bridge, b) != 0) return -1;
+    if (!valid_particle_index(main_sim, a->host_index) ||
+        !valid_particle_index(main_sim, b->host_index)) {
+        return bridge_error("subsystem host_index is out of bounds during resolved coupling");
+    }
+    if (a->host_index == b->host_index) {
+        return bridge_error("resolved subsystem coupling requires distinct host particles");
+    }
+
+    const int n_a = sub_a->N;
+    const int n_b = sub_b->N;
+    const int max_n = n_a > n_b ? n_a : n_b;
+    if (reb_bridge_internal_ensure_kick_workspace(bridge, max_n, main_sim->N) != 0) return -1;
+
+    struct reb_bridge_vec3* acc_a = bridge->internal_acc;
+    struct reb_bridge_vec3* acc_b = bridge->source_acc;
+    memset(acc_a, 0, sizeof(*acc_a) * (size_t)n_a);
+    memset(acc_b, 0, sizeof(*acc_b) * (size_t)n_b);
+
+    double mt_a = 0.0;
+    double mt_b = 0.0;
+    if (subsystem_total_mass(sub_a, &mt_a) != 0) return -1;
+    if (subsystem_total_mass(sub_b, &mt_b) != 0) return -1;
+
+    struct reb_bridge_vec3 bc_a;
+    struct reb_bridge_vec3 bc_b;
+    if (subsystem_barycenter(sub_a, &bc_a) != 0) return -1;
+    if (subsystem_barycenter(sub_b, &bc_b) != 0) return -1;
+
+    const struct reb_particle* host_a = &main_sim->particles[a->host_index];
+    const struct reb_particle* host_b = &main_sim->particles[b->host_index];
+    const struct reb_bridge_vec3 host_pos_a = particle_pos(host_a);
+    const struct reb_bridge_vec3 host_pos_b = particle_pos(host_b);
+    const struct reb_bridge_vec3 com_a = vec_add(host_pos_a, bc_a);
+    const struct reb_bridge_vec3 com_b = vec_add(host_pos_b, bc_b);
+    const double G = main_sim->G;
+
+    for (int i = 0; i < n_a; i++) {
+        const struct reb_particle* pa = &sub_a->particles[i];
+        const struct reb_bridge_vec3 pos_a = vec_add(host_pos_a, particle_pos(pa));
+        for (int j = 0; j < n_b; j++) {
+            const struct reb_particle* pb = &sub_b->particles[j];
+            const struct reb_bridge_vec3 pos_b = vec_add(host_pos_b, particle_pos(pb));
+            acc_a[i] = vec_add(
+                acc_a[i],
+                gravity_from_point_mass(pos_a, pos_b, pb->m, G)
+            );
+            acc_b[j] = vec_add(
+                acc_b[j],
+                gravity_from_point_mass(pos_b, pos_a, pa->m, G)
+            );
+        }
+    }
+
+    struct reb_bridge_vec3 com_acc_a = vec3(0.0, 0.0, 0.0);
+    struct reb_bridge_vec3 com_acc_b = vec3(0.0, 0.0, 0.0);
+    for (int i = 0; i < n_a; i++) {
+        com_acc_a = vec_add(com_acc_a, vec_scale(acc_a[i], sub_a->particles[i].m));
+    }
+    for (int j = 0; j < n_b; j++) {
+        com_acc_b = vec_add(com_acc_b, vec_scale(acc_b[j], sub_b->particles[j].m));
+    }
+    com_acc_a = vec_scale(com_acc_a, 1.0 / mt_a);
+    com_acc_b = vec_scale(com_acc_b, 1.0 / mt_b);
+
+    for (int i = 0; i < n_a; i++) {
+        struct reb_particle* pa = &sub_a->particles[i];
+        const struct reb_bridge_vec3 internal = vec_sub(acc_a[i], com_acc_a);
+        pa->vx += internal.x * dt_kick;
+        pa->vy += internal.y * dt_kick;
+        pa->vz += internal.z * dt_kick;
+    }
+    for (int j = 0; j < n_b; j++) {
+        struct reb_particle* pb = &sub_b->particles[j];
+        const struct reb_bridge_vec3 internal = vec_sub(acc_b[j], com_acc_b);
+        pb->vx += internal.x * dt_kick;
+        pb->vy += internal.y * dt_kick;
+        pb->vz += internal.z * dt_kick;
+    }
+
+    const struct reb_bridge_vec3 mono_a = gravity_from_source(com_a, host_b, G);
+    const struct reb_bridge_vec3 mono_b = gravity_from_source(com_b, host_a, G);
+    const struct reb_bridge_vec3 host_acc_a = vec_sub(com_acc_a, mono_a);
+    const struct reb_bridge_vec3 host_acc_b = vec_sub(com_acc_b, mono_b);
+    struct reb_particle* main_a = &main_sim->particles[a->host_index];
+    struct reb_particle* main_b = &main_sim->particles[b->host_index];
+    main_a->vx += host_acc_a.x * dt_kick;
+    main_a->vy += host_acc_a.y * dt_kick;
+    main_a->vz += host_acc_a.z * dt_kick;
+    main_b->vx += host_acc_b.x * dt_kick;
+    main_b->vy += host_acc_b.y * dt_kick;
+    main_b->vz += host_acc_b.z * dt_kick;
+
+    return 0;
+}
+
+static int apply_resolved_subsystem_pair_cross_kicks(
+    struct reb_bridge* bridge,
+    double dt_kick
+) {
+    if (bridge->subsystem_coupling != REB_BRIDGE_SUBSYSTEM_COUPLING_RESOLVED) return 0;
+    for (int i = 0; i < bridge->n_subsystems; i++) {
+        for (int j = i + 1; j < bridge->n_subsystems; j++) {
+            if (apply_resolved_subsystem_pair_cross_kick(
+                    bridge,
+                    &bridge->subsystems[i],
+                    &bridge->subsystems[j],
+                    dt_kick
+                ) != 0) {
+                return -1;
+            }
+        }
+    }
+    for (int i = 0; i < bridge->n_subsystems; i++) {
+        reb_simulation_synchronize(bridge->subsystems[i].sub_sim);
+    }
+    reb_simulation_synchronize(bridge->main_sim);
     return 0;
 }
 
@@ -252,7 +408,7 @@ int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick) {
             return -1;
         }
     }
-    return 0;
+    return apply_resolved_subsystem_pair_cross_kicks(bridge, dt_kick);
 }
 
 int reb_bridge_internal_apply_cross_kick_for_step(
@@ -266,7 +422,7 @@ int reb_bridge_internal_apply_cross_kick_for_step(
             return -1;
         }
     }
-    return 0;
+    return apply_resolved_subsystem_pair_cross_kicks(bridge, dt_kick);
 }
 
 int reb_bridge_internal_apply_cross_kick_with_kernel_for_step(
@@ -281,5 +437,5 @@ int reb_bridge_internal_apply_cross_kick_with_kernel_for_step(
             return -1;
         }
     }
-    return 0;
+    return apply_resolved_subsystem_pair_cross_kicks(bridge, dt_kick);
 }

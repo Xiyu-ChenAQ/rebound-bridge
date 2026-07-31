@@ -71,7 +71,10 @@ static struct reb_simulation* make_sub_sim(double dt) {
     return sim;
 }
 
-int main(void) {
+static int measure_roundtrip(
+    enum reb_bridge_method method,
+    double* max_delta_out
+) {
     const double dt_outer = 1.0 / 365.25;
     const double dt_inner = dt_outer / 4.0;
     const int steps = 8;
@@ -91,6 +94,10 @@ int main(void) {
         return fail("failed to create bridge");
     }
     reb_bridge_set_owns_main(bridge, 1);
+    if (reb_bridge_set_method(bridge, method) != 0) {
+        reb_bridge_free(bridge);
+        return fail("failed to select method for reversibility test");
+    }
     if (reb_bridge_add_subsystem(bridge, 1, sub_sim, dt_inner, 1) != 0) {
         reb_bridge_free(bridge);
         return fail("failed to add subsystem");
@@ -130,9 +137,27 @@ int main(void) {
     }
 
     reb_bridge_free(bridge);
+    *max_delta_out = max_delta;
+    return EXIT_SUCCESS;
+}
 
-    if (max_delta > 1.0e-10) {
-        fprintf(stderr, "forward-backward state drift too large: %.17g\n", max_delta);
+int main(void) {
+    double order2_delta = 0.0;
+    double lf42_delta = 0.0;
+    if (measure_roundtrip(REB_BRIDGE_METHOD_ORDER2, &order2_delta) != EXIT_SUCCESS ||
+        measure_roundtrip(REB_BRIDGE_METHOD_EOS_LF4_2, &lf42_delta) != EXIT_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+
+    printf("order2_roundtrip_max=%.17g\n", order2_delta);
+    printf("lf42_roundtrip_max=%.17g\n", lf42_delta);
+    if (order2_delta > 1.0e-11 || lf42_delta > 1.0e-11) {
+        fprintf(
+            stderr,
+            "forward-backward state drift too large: order2=%.17g lf42=%.17g\n",
+            order2_delta,
+            lf42_delta
+        );
         return EXIT_FAILURE;
     }
 

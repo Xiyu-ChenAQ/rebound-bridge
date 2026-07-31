@@ -2,6 +2,8 @@
 /* Xiyu-Chen */
 #include "bridge_internal.h"
 
+#include <float.h>
+
 /* Core Bridge lifecycle and stable API. */
 
 int reb_bridge_set_integrator_whfast(struct reb_simulation* sim) {
@@ -38,6 +40,7 @@ struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_
     bridge->owns_main_sim = 0;
     bridge->method = REB_BRIDGE_METHOD_ORDER2;
     bridge->cross_kick_kernel = REB_BRIDGE_CROSS_KICK_PLAIN;
+    bridge->subsystem_coupling = REB_BRIDGE_SUBSYSTEM_COUPLING_MONOPOLE;
     bridge->force_gradient_scale = 1.0;
     bridge->corrector = REB_BRIDGE_CORRECTOR_NONE;
     bridge->corrector_scale = 1.0;
@@ -72,6 +75,82 @@ int reb_bridge_set_method(struct reb_bridge* bridge, enum reb_bridge_method meth
 
 enum reb_bridge_method reb_bridge_get_method(const struct reb_bridge* bridge) {
     return bridge ? bridge->method : REB_BRIDGE_METHOD_INVALID;
+}
+
+static int valid_subsystem_coupling(enum reb_bridge_subsystem_coupling coupling) {
+    switch (coupling) {
+        case REB_BRIDGE_SUBSYSTEM_COUPLING_MONOPOLE:
+        case REB_BRIDGE_SUBSYSTEM_COUPLING_RESOLVED:
+            return 1;
+        case REB_BRIDGE_SUBSYSTEM_COUPLING_INVALID:
+            return 0;
+    }
+    return 0;
+}
+
+int reb_bridge_set_subsystem_coupling(
+    struct reb_bridge* bridge,
+    enum reb_bridge_subsystem_coupling coupling
+) {
+    if (!bridge) return bridge_error("bridge is NULL");
+    if (!valid_subsystem_coupling(coupling)) return bridge_error("invalid subsystem coupling");
+    bridge->subsystem_coupling = coupling;
+    return 0;
+}
+
+enum reb_bridge_subsystem_coupling reb_bridge_get_subsystem_coupling(
+    const struct reb_bridge* bridge
+) {
+    return bridge ? bridge->subsystem_coupling : REB_BRIDGE_SUBSYSTEM_COUPLING_INVALID;
+}
+
+static int validate_subsystem_canonical_state(
+    const struct reb_particle* host,
+    const struct reb_simulation* sub_sim
+) {
+    double total_mass = 0.0;
+    double position_scale = 0.0;
+    double velocity_scale = 0.0;
+    struct reb_bridge_vec3 weighted_position = vec3(0.0, 0.0, 0.0);
+    struct reb_bridge_vec3 weighted_velocity = vec3(0.0, 0.0, 0.0);
+
+    for (int i = 0; i < sub_sim->N; i++) {
+        const struct reb_particle* particle = &sub_sim->particles[i];
+        if (!isfinite(particle->m) || particle->m < 0.0) {
+            return bridge_error("subsystem particle masses must be finite and non-negative");
+        }
+        const struct reb_bridge_vec3 position = particle_pos(particle);
+        const struct reb_bridge_vec3 velocity = vec3(particle->vx, particle->vy, particle->vz);
+        total_mass += particle->m;
+        weighted_position = vec_add(weighted_position, vec_scale(position, particle->m));
+        weighted_velocity = vec_add(weighted_velocity, vec_scale(velocity, particle->m));
+        position_scale = fmax(position_scale, vec_norm(position));
+        velocity_scale = fmax(velocity_scale, vec_norm(velocity));
+    }
+
+    if (!isfinite(total_mass) || total_mass <= 0.0) {
+        return bridge_error("subsystem total mass must be positive and finite");
+    }
+    if (!isfinite(host->m) || host->m <= 0.0) {
+        return bridge_error("subsystem host mass must be positive and finite");
+    }
+
+    const double summation_factor = 128.0 * DBL_EPSILON * fmax(1.0, (double)sub_sim->N);
+    const double mass_tolerance = summation_factor * fmax(fabs(host->m), total_mass);
+    if (fabs(host->m - total_mass) > mass_tolerance) {
+        return bridge_error("subsystem host mass must equal subsystem total mass");
+    }
+
+    const double position_tolerance = summation_factor * total_mass * position_scale;
+    if (vec_norm(weighted_position) > position_tolerance) {
+        return bridge_error("subsystem barycenter must be at the origin");
+    }
+
+    const double velocity_tolerance = summation_factor * total_mass * velocity_scale;
+    if (vec_norm(weighted_velocity) > velocity_tolerance) {
+        return bridge_error("subsystem center-of-mass velocity must be zero");
+    }
+    return 0;
 }
 
 void reb_bridge_free(struct reb_bridge* bridge) {
@@ -110,6 +189,9 @@ int reb_bridge_add_subsystem(
         return bridge_error("host_index is out of bounds");
     }
     if (sub_sim->N <= 0) return bridge_error("sub_sim has no particles");
+    if (validate_subsystem_canonical_state(&bridge->main_sim->particles[host_index], sub_sim) != 0) {
+        return -1;
+    }
     if (dt_inner <= 0.0) return bridge_error("dt_inner must be positive");
     if (dt_inner > bridge->dt_outer) return bridge_error("dt_inner must be <= dt_outer");
 

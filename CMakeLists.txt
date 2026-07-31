@@ -77,7 +77,7 @@ add_library(rebound_bridge::rebound_bridge ALIAS rebound_bridge)
 target_include_directories(
     rebound_bridge
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(rebound_bridge PUBLIC c_std_99)
@@ -173,11 +173,49 @@ if(REBOUND_BRIDGE_BUILD_TESTS)
     add_test(NAME rebound_bridge_method_api_test COMMAND rebound_bridge_method_api_test)
 
     add_executable(
+        rebound_bridge_step_dispatch_test
+        tests/bridge_step_dispatch_test.c
+    )
+    target_link_libraries(rebound_bridge_step_dispatch_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME rebound_bridge_step_dispatch_test COMMAND rebound_bridge_step_dispatch_test)
+
+    add_executable(
+        rebound_bridge_registration_contract_test
+        tests/bridge_registration_contract_test.c
+    )
+    target_link_libraries(rebound_bridge_registration_contract_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME rebound_bridge_registration_contract_test COMMAND rebound_bridge_registration_contract_test)
+
+    add_executable(
         rebound_bridge_reversibility_test
         tests/bridge_reversibility_test.c
     )
     target_link_libraries(rebound_bridge_reversibility_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(NAME rebound_bridge_reversibility_test COMMAND rebound_bridge_reversibility_test)
+
+    add_executable(
+        rebound_bridge_multibody_reversibility_test
+        tests/bridge_multibody_reversibility_test.c
+    )
+    target_link_libraries(rebound_bridge_multibody_reversibility_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(
+        NAME rebound_bridge_multibody_reversibility_test
+        COMMAND rebound_bridge_multibody_reversibility_test
+    )
+
+    add_executable(
+        rebound_bridge_subsystem_coupling_test
+        tests/bridge_subsystem_coupling_test.c
+    )
+    target_link_libraries(rebound_bridge_subsystem_coupling_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME rebound_bridge_subsystem_coupling_test COMMAND rebound_bridge_subsystem_coupling_test)
+
+    add_executable(
+        rebound_bridge_limiting_cases_test
+        tests/bridge_limiting_cases_test.c
+    )
+    target_link_libraries(rebound_bridge_limiting_cases_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME rebound_bridge_limiting_cases_test COMMAND rebound_bridge_limiting_cases_test)
 
     if(TARGET solar_system_ias15_compare)
         add_test(
@@ -248,7 +286,7 @@ if(REBOUND_BRIDGE_INSTALL)
     )
 
     install(
-        DIRECTORY include/
+        DIRECTORY src/include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 
