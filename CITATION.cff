@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use rebound_bridge in research, please cite this software and the associated paper when available."
+title: "rebound_bridge: Multirate operator splitting for hierarchical REBOUND simulations"
+type: software
+authors:
+  - family-names: Chen
+    given-names: Xiyu
+repository-code: "https://github.com/Xiyu-ChenAQ/rebound-bridge"
+url: "https://github.com/Xiyu-ChenAQ/rebound-bridge"
+license: GPL-3.0-or-later
+version: 0.1.0
+date-released: 2026-08-12
+keywords:
+  - REBOUND
+  - N-body simulation
+  - operator splitting
+  - multirate integration
+  - hierarchical systems

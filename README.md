@@ -1,7 +1,9 @@
 # rebound_bridge
 
-`rebound_bridge` is a small experimental C library for hierarchical REBOUND
-simulations with resolved fast subsystems.
+`rebound_bridge` is a C99 research library for hierarchical REBOUND
+simulations with resolved fast subsystems.  The second-order KDK and LF4_2
+methods form the stable public core; higher-order force-gradient and corrector
+interfaces are explicitly experimental.
 
 The goal is not to replace WHFast in ordinary single-center planetary systems.
 Instead, the library applies a Bridge split when a strongly bound subsystem
@@ -244,3 +246,9 @@ Bridge splitting error.
 
 `rebound_bridge` is licensed under GPL-3.0-or-later.  It vendors and builds
 against REBOUND, which is also GPL-3.0-or-later.
+
+## Citation
+
+Citation metadata for the current software release is provided in
+[`CITATION.cff`](CITATION.cff).  Please cite the associated methods paper in
+addition to the software release once the paper is available.
