@@ -30,10 +30,6 @@ endforeach()
 add_executable(generalized_order_crossover generalized_order/generalized_order_crossover.c)
 target_link_libraries(generalized_order_crossover PRIVATE rebound_bridge::rebound_bridge)
 
-add_executable(complex_speed_ratio scaling/complex_speed_ratio.c)
-target_include_directories(complex_speed_ratio PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../validation")
-target_link_libraries(complex_speed_ratio PRIVATE rebound_bridge::rebound_bridge)
-
 add_executable(bridge_limiting_cases_test tests/bridge_limiting_cases_test.c)
 target_link_libraries(bridge_limiting_cases_test PRIVATE rebound_bridge::rebound_bridge)
 

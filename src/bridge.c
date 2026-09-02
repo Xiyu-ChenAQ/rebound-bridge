@@ -6,6 +6,12 @@
 
 /* Core Bridge lifecycle and stable API. */
 
+enum reb_bridge_error reb_bridge_error_state = REB_BRIDGE_ERROR_NONE;
+
+enum reb_bridge_error reb_bridge_last_error(void) {
+    return reb_bridge_error_state;
+}
+
 int reb_bridge_set_integrator_whfast(struct reb_simulation* sim) {
     if (!sim) return bridge_error("sim is NULL");
     sim->integrator = REB_INTEGRATOR_WHFAST;
@@ -39,11 +45,7 @@ struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_
     bridge->dt_outer = dt_outer;
     bridge->owns_main_sim = 0;
     bridge->method = REB_BRIDGE_METHOD_ORDER2;
-    bridge->cross_kick_kernel = REB_BRIDGE_CROSS_KICK_PLAIN;
     bridge->subsystem_coupling = REB_BRIDGE_SUBSYSTEM_COUPLING_MONOPOLE;
-    bridge->force_gradient_scale = 1.0;
-    bridge->corrector = REB_BRIDGE_CORRECTOR_NONE;
-    bridge->corrector_scale = 1.0;
     bridge->main_sim->dt = dt_outer;
     return bridge;
 }
@@ -57,8 +59,6 @@ static int valid_bridge_method(enum reb_bridge_method method) {
     switch (method) {
         case REB_BRIDGE_METHOD_ORDER2:
         case REB_BRIDGE_METHOD_EOS_LF4_2:
-        case REB_BRIDGE_METHOD_EOS_LF8_6_4:
-        case REB_BRIDGE_METHOD_FORWARD_FG4:
             return 1;
         case REB_BRIDGE_METHOD_INVALID:
             return 0;
@@ -189,6 +189,14 @@ int reb_bridge_add_subsystem(
         return bridge_error("host_index is out of bounds");
     }
     if (sub_sim->N <= 0) return bridge_error("sub_sim has no particles");
+    for (int i = 0; i < bridge->n_subsystems; i++) {
+        if (bridge->subsystems[i].sub_sim == sub_sim ||
+            bridge->subsystems[i].host_index == host_index) {
+            bridge_error("duplicate subsystem registration");
+            reb_bridge_error_state = REB_BRIDGE_ERROR_DUPLICATE_REGISTRATION;
+            return -1;
+        }
+    }
     if (validate_subsystem_canonical_state(&bridge->main_sim->particles[host_index], sub_sim) != 0) {
         return -1;
     }

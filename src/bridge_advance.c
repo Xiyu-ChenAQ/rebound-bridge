@@ -6,6 +6,11 @@
 #include <limits.h>
 
 /* Order-2 Bridge advance method and method dispatcher. */
+static int bridge_duration_is_integral_outer_steps(const struct reb_bridge* bridge, double duration) {
+    if (!isfinite(duration) || duration < 0.0) return 0;
+    const double steps = duration / bridge->dt_outer;
+    return isfinite(steps) && fabs(steps - round(steps)) <= 64.0 * DBL_EPSILON * fmax(1.0, steps);
+}
 static int bridge_integrator_uses_fixed_steps(const struct reb_simulation* sim) {
     switch (sim->integrator) {
         case REB_INTEGRATOR_WHFAST:
@@ -153,10 +158,6 @@ int reb_bridge_step(struct reb_bridge* bridge, double dt) {
             return reb_bridge_internal_step_order2(bridge, dt);
         case REB_BRIDGE_METHOD_EOS_LF4_2:
             return reb_bridge_internal_step_eos_lf4_2(bridge, dt);
-        case REB_BRIDGE_METHOD_EOS_LF8_6_4:
-            return reb_bridge_internal_step_eos_lf8_6_4(bridge, dt);
-        case REB_BRIDGE_METHOD_FORWARD_FG4:
-            return reb_bridge_internal_step_forward_fg4(bridge, dt);
         case REB_BRIDGE_METHOD_INVALID:
             return bridge_error("invalid bridge method");
     }
@@ -165,7 +166,11 @@ int reb_bridge_step(struct reb_bridge* bridge, double dt) {
 
 static int bridge_advance_order2(struct reb_bridge* bridge, double duration) {
     if (!bridge) return bridge_error("bridge is NULL");
-    if (duration < 0.0) return bridge_error("duration must be non-negative");
+    if (!bridge_duration_is_integral_outer_steps(bridge, duration)) {
+        bridge_error("duration must be an integer multiple of dt_outer");
+        reb_bridge_error_state = REB_BRIDGE_ERROR_DURATION_NOT_DIVISIBLE;
+        return -1;
+    }
     if (duration == 0.0) return 0;
 
     const double target = bridge->main_sim->t + duration;
@@ -184,12 +189,7 @@ static int bridge_advance_order2(struct reb_bridge* bridge, double duration) {
         double next_dt = target - bridge->main_sim->t;
         if (next_dt > bridge->dt_outer) next_dt = bridge->dt_outer;
 
-        if (bridge->cross_kick_kernel == REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT) {
-            if (reb_bridge_internal_apply_cross_kick_for_step(bridge, 0.5 * dt, dt) != 0) return -1;
-            if (reb_bridge_internal_apply_cross_kick_for_step(bridge, 0.5 * next_dt, next_dt) != 0) return -1;
-        } else {
-            if (reb_bridge_internal_apply_cross_kick_for_step(bridge, 0.5 * (dt + next_dt), 0.5 * (dt + next_dt) * 2.0) != 0) return -1;
-        }
+        if (reb_bridge_internal_apply_cross_kick_for_step(bridge, 0.5 * (dt + next_dt), 0.5 * (dt + next_dt) * 2.0) != 0) return -1;
         dt = next_dt;
     }
 
@@ -199,15 +199,16 @@ static int bridge_advance_order2(struct reb_bridge* bridge, double duration) {
 
 int reb_bridge_advance(struct reb_bridge* bridge, double duration) {
     if (!bridge) return bridge_error("bridge is NULL");
+    if (!bridge_duration_is_integral_outer_steps(bridge, duration)) {
+        bridge_error("duration must be an integer multiple of dt_outer");
+        reb_bridge_error_state = REB_BRIDGE_ERROR_DURATION_NOT_DIVISIBLE;
+        return -1;
+    }
     switch (bridge->method) {
         case REB_BRIDGE_METHOD_ORDER2:
             return bridge_advance_order2(bridge, duration);
         case REB_BRIDGE_METHOD_EOS_LF4_2:
             return reb_bridge_advance_eos_lf4_2(bridge, duration);
-        case REB_BRIDGE_METHOD_EOS_LF8_6_4:
-            return reb_bridge_advance_eos_lf8_6_4(bridge, duration);
-        case REB_BRIDGE_METHOD_FORWARD_FG4:
-            return reb_bridge_advance_forward_fg4(bridge, duration);
         case REB_BRIDGE_METHOD_INVALID:
             return bridge_error("invalid bridge method");
     }

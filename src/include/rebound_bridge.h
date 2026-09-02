@@ -44,24 +44,11 @@ struct reb_bridge;
  *                 fixed integration interval has leading structure
  *                 O(epsilon h^4 + epsilon^2 h^2).
  *
- * Experimental / validation targets only - implementations live in
- * src/bridge_fg4_experimental.c and src/bridge_force_gradient_experimental.c:
- *   EOS_LF8_6_4 - 8th-order EOS-LF composition; extra substeps, not faster in practice.
- *   FORWARD_FG4 - 4th-order force-gradient forward scheme; requires second
- *                 force-gradient evaluation per step.
  */
 enum reb_bridge_method {
     REB_BRIDGE_METHOD_INVALID     = -1,
     REB_BRIDGE_METHOD_ORDER2      =  0,
     REB_BRIDGE_METHOD_EOS_LF4_2   =  1,
-    REB_BRIDGE_METHOD_EOS_LF8_6_4 =  2, /* experimental */
-    REB_BRIDGE_METHOD_FORWARD_FG4 =  3  /* experimental */
-};
-
-enum reb_bridge_cross_kick_kernel {
-    REB_BRIDGE_CROSS_KICK_INVALID        = -1,
-    REB_BRIDGE_CROSS_KICK_PLAIN          =  0,
-    REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT =  1  /* experimental */
 };
 
 enum reb_bridge_subsystem_coupling {
@@ -69,29 +56,6 @@ enum reb_bridge_subsystem_coupling {
     REB_BRIDGE_SUBSYSTEM_COUPLING_MONOPOLE =  0,
     REB_BRIDGE_SUBSYSTEM_COUPLING_RESOLVED =  1
 };
-
-enum reb_bridge_corrector {
-    REB_BRIDGE_CORRECTOR_INVALID       = -1,
-    REB_BRIDGE_CORRECTOR_NONE          =  0,
-    REB_BRIDGE_CORRECTOR_COMMUTATOR_AB =  1  /* experimental */
-};
-
-enum reb_bridge_corrector_direction {
-    REB_BRIDGE_CORRECTOR_INVERSE = -1,
-    REB_BRIDGE_CORRECTOR_FORWARD =  1
-};
-
-struct reb_bridge_force_gradient_check {
-    double max_abs_difference;
-    double max_relative_difference;
-    double max_abs_analytic;
-    double max_abs_finite_difference;
-    double internal_weighted_acc_residual;
-    double main_weighted_acc_residual;
-    double force_gradient_internal_weighted_acc_residual;
-    double force_gradient_main_weighted_acc_residual;
-};
-
 
 REB_BRIDGE_API struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_outer);
 REB_BRIDGE_API void reb_bridge_set_owns_main(struct reb_bridge* bridge, int owns_main_sim);
@@ -128,14 +92,6 @@ REB_BRIDGE_API int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double
 REB_BRIDGE_API int reb_bridge_step(struct reb_bridge* bridge, double dt);
 REB_BRIDGE_API int reb_bridge_advance(struct reb_bridge* bridge, double duration);
 REB_BRIDGE_API int reb_bridge_advance_eos_lf4_2(struct reb_bridge* bridge, double duration);
-
-REB_BRIDGE_API int reb_bridge_set_cross_kick_kernel(
-    struct reb_bridge* bridge,
-    enum reb_bridge_cross_kick_kernel kernel
-);
-REB_BRIDGE_API enum reb_bridge_cross_kick_kernel reb_bridge_get_cross_kick_kernel(const struct reb_bridge* bridge);
-REB_BRIDGE_API int reb_bridge_set_force_gradient_scale(struct reb_bridge* bridge, double scale);
-REB_BRIDGE_API double reb_bridge_get_force_gradient_scale(const struct reb_bridge* bridge);
 REB_BRIDGE_API int reb_bridge_set_subsystem_coupling(
     struct reb_bridge* bridge,
     enum reb_bridge_subsystem_coupling coupling
@@ -144,24 +100,19 @@ REB_BRIDGE_API enum reb_bridge_subsystem_coupling reb_bridge_get_subsystem_coupl
     const struct reb_bridge* bridge
 );
 
-REB_BRIDGE_API int reb_bridge_set_corrector(struct reb_bridge* bridge, enum reb_bridge_corrector corrector);
-REB_BRIDGE_API enum reb_bridge_corrector reb_bridge_get_corrector(const struct reb_bridge* bridge);
-REB_BRIDGE_API int reb_bridge_set_corrector_scale(struct reb_bridge* bridge, double scale);
-REB_BRIDGE_API double reb_bridge_get_corrector_scale(const struct reb_bridge* bridge);
-REB_BRIDGE_API int reb_bridge_apply_corrector(
-    struct reb_bridge* bridge,
-    enum reb_bridge_corrector_direction direction
-);
-
-REB_BRIDGE_API int reb_bridge_force_gradient_finite_difference_check(
-    struct reb_bridge* bridge,
-    int subsystem_index,
-    double epsilon,
-    struct reb_bridge_force_gradient_check* out
-);
-
 REB_BRIDGE_API int reb_bridge_set_integrator_whfast(struct reb_simulation* sim);
 REB_BRIDGE_API int reb_bridge_set_integrator_ias15(struct reb_simulation* sim);
+
+enum reb_bridge_error {
+    REB_BRIDGE_ERROR_NONE = 0,
+    REB_BRIDGE_ERROR_INVALID_ARGUMENT = 1,
+    REB_BRIDGE_ERROR_OUT_OF_MEMORY = 2,
+    REB_BRIDGE_ERROR_DURATION_NOT_DIVISIBLE = 3,
+    REB_BRIDGE_ERROR_DUPLICATE_REGISTRATION = 4,
+    REB_BRIDGE_ERROR_INTERNAL = 5
+};
+
+REB_BRIDGE_API enum reb_bridge_error reb_bridge_last_error(void);
 
 #ifdef __cplusplus
 }

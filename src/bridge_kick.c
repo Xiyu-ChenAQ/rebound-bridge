@@ -376,23 +376,12 @@ static int apply_subsystem_cross_kick(
     struct reb_bridge* bridge,
     struct reb_bridge_subsystem* sub,
     double dt_kick,
-    double step_dt,
-    enum reb_bridge_cross_kick_kernel kernel
+    double step_dt
 ) {
+    (void)step_dt;
     if (reb_bridge_internal_check_subsystem_time_sync(bridge, sub) != 0) return -1;
     if (reb_bridge_internal_ensure_kick_workspace(bridge, sub->sub_sim->N, bridge->main_sim->N) != 0) return -1;
     if (reb_bridge_internal_compute_subsystem_cross_acc(bridge, sub, bridge->internal_acc, bridge->main_acc) != 0) return -1;
-    if (kernel == REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT) {
-        if (reb_bridge_internal_apply_force_gradient_correction(
-                bridge,
-                sub,
-                bridge->internal_acc,
-                bridge->main_acc,
-                step_dt
-            ) != 0) {
-            return -1;
-        }
-    }
     apply_subsystem_cross_acc(bridge, sub, bridge->internal_acc, bridge->main_acc, dt_kick);
 
     reb_simulation_synchronize(sub->sub_sim);
@@ -404,7 +393,7 @@ int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double dt_kick) {
     if (!bridge) return bridge_error("bridge is NULL");
     const double step_dt = 2.0 * dt_kick;
     for (int i = 0; i < bridge->n_subsystems; i++) {
-        if (apply_subsystem_cross_kick(bridge, &bridge->subsystems[i], dt_kick, step_dt, bridge->cross_kick_kernel) != 0) {
+        if (apply_subsystem_cross_kick(bridge, &bridge->subsystems[i], dt_kick, step_dt) != 0) {
             return -1;
         }
     }
@@ -418,24 +407,10 @@ int reb_bridge_internal_apply_cross_kick_for_step(
 ) {
     if (!bridge) return bridge_error("bridge is NULL");
     for (int i = 0; i < bridge->n_subsystems; i++) {
-        if (apply_subsystem_cross_kick(bridge, &bridge->subsystems[i], dt_kick, step_dt, bridge->cross_kick_kernel) != 0) {
+        if (apply_subsystem_cross_kick(bridge, &bridge->subsystems[i], dt_kick, step_dt) != 0) {
             return -1;
         }
     }
     return apply_resolved_subsystem_pair_cross_kicks(bridge, dt_kick);
 }
 
-int reb_bridge_internal_apply_cross_kick_with_kernel_for_step(
-    struct reb_bridge* bridge,
-    double dt_kick,
-    double step_dt,
-    enum reb_bridge_cross_kick_kernel kernel
-) {
-    if (!bridge) return bridge_error("bridge is NULL");
-    for (int i = 0; i < bridge->n_subsystems; i++) {
-        if (apply_subsystem_cross_kick(bridge, &bridge->subsystems[i], dt_kick, step_dt, kernel) != 0) {
-            return -1;
-        }
-    }
-    return apply_resolved_subsystem_pair_cross_kicks(bridge, dt_kick);
-}

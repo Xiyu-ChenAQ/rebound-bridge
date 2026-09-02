@@ -127,5 +127,17 @@ int main(void) {
         fprintf(stderr, "LF step dispatch differs from direct LF advance: %.17g\n", dispatch_delta);
         return EXIT_FAILURE;
     }
+
+    struct bridge_state divisibility = make_state(REB_BRIDGE_METHOD_EOS_LF4_2);
+    if (!divisibility.bridge) {
+        free_state(&divisibility);
+        return fail("failed to create divisibility test state");
+    }
+    if (reb_bridge_advance(divisibility.bridge, dt_outer * 0.5) == 0 ||
+        reb_bridge_last_error() != REB_BRIDGE_ERROR_DURATION_NOT_DIVISIBLE) {
+        free_state(&divisibility);
+        return fail("non-integral outer duration should be rejected");
+    }
+    free_state(&divisibility);
     return EXIT_SUCCESS;
 }

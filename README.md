@@ -1,9 +1,8 @@
 # rebound_bridge
 
-`rebound_bridge` is a C99 research library for hierarchical REBOUND
-simulations with resolved fast subsystems.  The second-order KDK and LF4_2
-methods form the stable public core; higher-order force-gradient and corrector
-interfaces are explicitly experimental.
+`rebound_bridge` is a C99 library for hierarchical REBOUND simulations with
+resolved fast subsystems. The second-order KDK and LF4_2 methods form the
+stable public core.
 
 The goal is not to replace WHFast in ordinary single-center planetary systems.
 Instead, the library applies a Bridge split when a strongly bound subsystem
@@ -71,18 +70,10 @@ and are not installed as public API.
 
 ## Source Layout
 
-The implementation follows the short naming style used by REBOUND's `src/`
-tree.  Files ending in `_experimental` contain higher-order or force-gradient
-compositions that are still under investigation.
-
 - `src/bridge.c` — lifecycle, configuration, and subsystem registration.
 - `src/bridge_kick.c` — plain Bridge cross-kick kernel.
 - `src/bridge_advance.c` — order-2 KDK advance and stable dispatcher.
 - `src/bridge_eos.c` — EOS LF4_2 advance method.
-- `src/bridge_fg4_experimental.c` — forward force-gradient fourth-order advance.
-- `src/bridge_force_gradient_experimental.c` — force-gradient cross-kick kernel
-  and finite-difference diagnostics.
-- `src/bridge_processor.c` — commutator processor.
 - `src/bridge_internal.h` — private to the library implementation.
 - `examples/bridge_examples.c` — convenience constructors used only by the
   bundled examples; not compiled into the installed library.
@@ -165,10 +156,8 @@ integrator on an existing `struct reb_simulation*`.
   `O(epsilon h^4 + epsilon^2 h^2)`; it is not unconditionally fourth order.
 - `REB_BRIDGE_METHOD_ORDER2` — symmetric KDK Bridge (2nd order), useful as a
   baseline and for simple validation.
-- `REB_BRIDGE_METHOD_EOS_LF8_6_4` — *experimental*; higher-order EOS composition
   using LF8_6_4 coefficients.  Includes negative substeps; treat as a validation
   target rather than a default recommendation.
-- `REB_BRIDGE_METHOD_FORWARD_FG4` — *experimental*; forward-only 4th-order
   force-gradient Bridge kernel.
 
 Advanced cross-kick and corrector controls (`REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT`,

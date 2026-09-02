@@ -2,6 +2,8 @@
 /* Xiyu-Chen */
 #include "bridge_internal.h"
 
+#include <float.h>
+
 /* EOS Bridge advance methods. */
 
 static int bridge_advance_by_step(
@@ -61,6 +63,13 @@ int reb_bridge_internal_step_eos_lf8_6_4(struct reb_bridge* bridge, double dt) {
 }
 
 int reb_bridge_advance_eos_lf4_2(struct reb_bridge* bridge, double duration) {
+    if (!bridge || !isfinite(duration) || duration < 0.0) return bridge_error("duration must be non-negative and finite");
+    const double steps = duration / bridge->dt_outer;
+    if (!isfinite(steps) || fabs(steps - round(steps)) > 64.0 * DBL_EPSILON * fmax(1.0, steps)) {
+        bridge_error("duration must be an integer multiple of dt_outer");
+        reb_bridge_error_state = REB_BRIDGE_ERROR_DURATION_NOT_DIVISIBLE;
+        return -1;
+    }
     return bridge_advance_by_step(bridge, duration, reb_bridge_internal_step_eos_lf4_2);
 }
 

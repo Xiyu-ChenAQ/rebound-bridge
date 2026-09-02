@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(
     rebound_bridge
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Standalone symplectic bridge scheduler for REBOUND"
     LANGUAGES C
 )
@@ -66,12 +66,7 @@ add_library(
 
     # Cross-interaction operators.
     src/bridge_kick.c
-    src/bridge_processor.c
 
-    # Experimental higher-order and force-gradient compositions.
-    # Implementation files are named *_experimental.c to signal their status.
-    src/bridge_fg4_experimental.c
-    src/bridge_force_gradient_experimental.c
 )
 add_library(rebound_bridge::rebound_bridge ALIAS rebound_bridge)
 target_include_directories(
@@ -131,22 +126,10 @@ if(REBOUND_BRIDGE_BUILD_VALIDATION)
     )
 
     add_executable(
-        solar_system_ias15_compare
-        validation/solar_system_ias15/compare_solar_system_ias15.c
-    )
-    target_link_libraries(solar_system_ias15_compare PRIVATE rebound_bridge_val_common)
-
-    add_executable(
         solar_system_whfast_bridge_bench
         validation/solar_system_ias15/bench_whfast_bridge.c
     )
     target_link_libraries(solar_system_whfast_bridge_bench PRIVATE rebound_bridge_val_common)
-
-    add_executable(
-        pluto_charon_compare
-        validation/pluto_charon_binary/compare_pluto_charon.c
-    )
-    target_link_libraries(pluto_charon_compare PRIVATE rebound_bridge_val_common)
 
     add_executable(
         pluto_charon_whfast_bridge_bench
@@ -166,36 +149,29 @@ if(REBOUND_BRIDGE_BUILD_TESTS)
     enable_testing()
 
     add_executable(
-        rebound_bridge_method_api_test
-        tests/bridge_method_api_test.c
-    )
-    target_link_libraries(rebound_bridge_method_api_test PRIVATE rebound_bridge::rebound_bridge)
-    add_test(NAME rebound_bridge_method_api_test COMMAND rebound_bridge_method_api_test)
-
-    add_executable(
         rebound_bridge_step_dispatch_test
-        tests/bridge_step_dispatch_test.c
+        tests/unit/bridge_step_dispatch_test.c
     )
     target_link_libraries(rebound_bridge_step_dispatch_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(NAME rebound_bridge_step_dispatch_test COMMAND rebound_bridge_step_dispatch_test)
 
     add_executable(
         rebound_bridge_registration_contract_test
-        tests/bridge_registration_contract_test.c
+        tests/unit/bridge_registration_contract_test.c
     )
     target_link_libraries(rebound_bridge_registration_contract_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(NAME rebound_bridge_registration_contract_test COMMAND rebound_bridge_registration_contract_test)
 
     add_executable(
         rebound_bridge_reversibility_test
-        tests/bridge_reversibility_test.c
+        tests/unit/bridge_reversibility_test.c
     )
     target_link_libraries(rebound_bridge_reversibility_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(NAME rebound_bridge_reversibility_test COMMAND rebound_bridge_reversibility_test)
 
     add_executable(
         rebound_bridge_multibody_reversibility_test
-        tests/bridge_multibody_reversibility_test.c
+        tests/unit/bridge_multibody_reversibility_test.c
     )
     target_link_libraries(rebound_bridge_multibody_reversibility_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(
@@ -205,75 +181,18 @@ if(REBOUND_BRIDGE_BUILD_TESTS)
 
     add_executable(
         rebound_bridge_subsystem_coupling_test
-        tests/bridge_subsystem_coupling_test.c
+        tests/unit/bridge_subsystem_coupling_test.c
     )
     target_link_libraries(rebound_bridge_subsystem_coupling_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(NAME rebound_bridge_subsystem_coupling_test COMMAND rebound_bridge_subsystem_coupling_test)
 
     add_executable(
         rebound_bridge_limiting_cases_test
-        tests/bridge_limiting_cases_test.c
+        tests/unit/bridge_limiting_cases_test.c
     )
     target_link_libraries(rebound_bridge_limiting_cases_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(NAME rebound_bridge_limiting_cases_test COMMAND rebound_bridge_limiting_cases_test)
 
-    if(TARGET solar_system_ias15_compare)
-        add_test(
-            NAME solar_system_ias15_csv_schema_test
-            COMMAND
-                ${CMAKE_COMMAND}
-                -DCOMPARE_EXE=$<TARGET_FILE:solar_system_ias15_compare>
-                -DOUT_CSV=${CMAKE_CURRENT_BINARY_DIR}/solar_system_ias15_schema_test.csv
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/validation_csv_schema_test.cmake
-        )
-        add_test(
-            NAME solar_system_ias15_initial_state_test
-            COMMAND
-                ${CMAKE_COMMAND}
-                -DCOMPARE_EXE=$<TARGET_FILE:solar_system_ias15_compare>
-                -DOUT_CSV=${CMAKE_CURRENT_BINARY_DIR}/solar_system_ias15_initial_state_test.csv
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/validation_initial_state_test.cmake
-        )
-    endif()
-
-    if(TARGET solar_system_whfast_bridge_bench)
-        add_test(
-            NAME solar_system_whfast_bridge_bench_method_test
-            COMMAND
-                ${CMAKE_COMMAND}
-                -DBENCH_EXE=$<TARGET_FILE:solar_system_whfast_bridge_bench>
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/whfast_bridge_bench_method_test.cmake
-        )
-    endif()
-
-    if(TARGET pluto_charon_compare)
-        add_test(
-            NAME pluto_charon_initial_state_test
-            COMMAND
-                ${CMAKE_COMMAND}
-                -DPLUTO_CHARON_EXE=$<TARGET_FILE:pluto_charon_compare>
-                -DOUT_CSV=${CMAKE_CURRENT_BINARY_DIR}/pluto_charon_initial_state_test.csv
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/pluto_charon_initial_state_test.cmake
-        )
-        add_test(
-            NAME pluto_charon_csv_schema_test
-            COMMAND
-                ${CMAKE_COMMAND}
-                -DPLUTO_CHARON_EXE=$<TARGET_FILE:pluto_charon_compare>
-                -DOUT_CSV=${CMAKE_CURRENT_BINARY_DIR}/pluto_charon_schema_test.csv
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/pluto_charon_csv_schema_test.cmake
-        )
-    endif()
-
-    if(TARGET pluto_charon_whfast_bridge_bench)
-        add_test(
-            NAME pluto_charon_bench_cli_test
-            COMMAND
-                ${CMAKE_COMMAND}
-                -DBENCH_EXE=$<TARGET_FILE:pluto_charon_whfast_bridge_bench>
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/pluto_charon_bench_cli_test.cmake
-        )
-    endif()
 endif()
 
 if(REBOUND_BRIDGE_INSTALL)

@@ -15,7 +15,6 @@ TARGETS = (
     "galilean_long_energy",
     "galilean_reversibility",
     "generalized_order_crossover",
-    "complex_speed_ratio",
     "bridge_limiting_cases_test",
     "galilean_exomoon_survival",
 )
@@ -72,7 +71,6 @@ def run_smoke(exes: dict[str, Path], dry_run: bool) -> None:
     invoke([exes["bridge_limiting_cases_test"]], dry_run)
     crossover = out / "generalized_order_crossover.csv"
     invoke([exes["generalized_order_crossover"], "--csv", crossover], dry_run)
-    run_scaling(exes["complex_speed_ratio"], False, dry_run)
     for integrator in ("bridge", "ias15"):
         invoke([exes["galilean_exomoon_survival"], "--integrator", integrator, "--a-planet-au", "0.55", "--years", "0.01", "--samples", "4", "--dt-outer-days", "0.5", "--inner-ratio", "40", "--csv", out / f"exomoon_{integrator}.csv"], dry_run)
 
@@ -145,7 +143,6 @@ def run_full(exes: dict[str, Path], plots_only: bool, dry_run: bool) -> None:
         invoke([exes["generalized_order_crossover"], "--csv", generalized / "generalized_order_crossover.csv"], dry_run)
         run_speed_accuracy(exes, dry_run)
         run_long_energy(exes, dry_run)
-        run_scaling(exes["complex_speed_ratio"], True, dry_run)
         invoke([exes["galilean_reversibility"], "--csv", ROOT / "results" / "reversibility.csv"], dry_run)
         run_exomoon(exes["galilean_exomoon_survival"], dry_run)
     make_plots(exes, dry_run)

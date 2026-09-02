@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern enum reb_bridge_error reb_bridge_error_state;
+
 struct reb_bridge_vec3 {
     double x;
     double y;
@@ -28,11 +30,7 @@ struct reb_bridge {
     double dt_outer;
     int owns_main_sim;
     enum reb_bridge_method method;
-    enum reb_bridge_cross_kick_kernel cross_kick_kernel;
     enum reb_bridge_subsystem_coupling subsystem_coupling;
-    double force_gradient_scale;
-    enum reb_bridge_corrector corrector;
-    double corrector_scale;
     struct reb_bridge_subsystem* subsystems;
     int n_subsystems;
     int cap_subsystems;
@@ -97,6 +95,7 @@ static inline int bridge_reached_time(double t, double target) {
 
 static inline int bridge_error(const char* msg) {
     fprintf(stderr, "[rebound_bridge] %s\n", msg);
+    reb_bridge_error_state = REB_BRIDGE_ERROR_INTERNAL;
     return -1;
 }
 
@@ -154,30 +153,11 @@ int reb_bridge_internal_compute_subsystem_cross_acc(
     struct reb_bridge_vec3* internal_acc,
     struct reb_bridge_vec3* main_acc
 );
-int reb_bridge_internal_apply_force_gradient_correction(
-    struct reb_bridge* bridge,
-    struct reb_bridge_subsystem* sub,
-    struct reb_bridge_vec3* internal_acc,
-    struct reb_bridge_vec3* main_acc,
-    double step_dt
-);
 int reb_bridge_internal_apply_cross_kick_for_step(struct reb_bridge* bridge, double dt_kick, double step_dt);
-int reb_bridge_internal_apply_cross_kick_with_kernel_for_step(
-    struct reb_bridge* bridge,
-    double dt_kick,
-    double step_dt,
-    enum reb_bridge_cross_kick_kernel kernel
-);
 int reb_bridge_internal_integrate_all_to_target(struct reb_bridge* bridge, double target);
 int reb_bridge_internal_integrate_all_to_target_symmetric(struct reb_bridge* bridge, double target);
 void reb_bridge_internal_snap_all_times(struct reb_bridge* bridge, double time);
 int reb_bridge_internal_step_order2(struct reb_bridge* bridge, double dt);
 int reb_bridge_internal_step_eos_lf4_2(struct reb_bridge* bridge, double dt);
-int reb_bridge_internal_step_eos_lf8_6_4(struct reb_bridge* bridge, double dt);
-int reb_bridge_internal_step_forward_fg4(struct reb_bridge* bridge, double dt);
-
-/* Experimental advance functions - implemented in bridge_fg4_experimental.c. */
-int reb_bridge_advance_eos_lf8_6_4(struct reb_bridge* bridge, double duration);
-int reb_bridge_advance_forward_fg4(struct reb_bridge* bridge, double duration);
 
 #endif /* REBOUND_BRIDGE_INTERNAL_H */

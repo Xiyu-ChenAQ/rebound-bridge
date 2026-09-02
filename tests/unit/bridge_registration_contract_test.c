@@ -75,5 +75,23 @@ int main(void) {
     if (try_registration(CONTRACT_VELOCITY_OFFSET) == 0) {
         return fail("subsystem registration accepted nonzero internal COM velocity");
     }
+
+    struct reb_simulation* main_sim = reb_simulation_create();
+    struct reb_simulation* sub_sim = reb_simulation_create();
+    if (!main_sim || !sub_sim) return fail("failed to create duplicate registration state");
+    main_sim->G = REB_BRIDGE_G_AU_YR_MSUN;
+    sub_sim->G = REB_BRIDGE_G_AU_YR_MSUN;
+    reb_simulation_add_fmt(main_sim, "m", 1.0);
+    reb_simulation_add_fmt(sub_sim, "m", 1.0);
+    struct reb_bridge* bridge = reb_bridge_create(main_sim, 0.01);
+    if (!bridge || reb_bridge_add_subsystem(bridge, 0, sub_sim, 0.01, 0) != 0 ||
+        reb_bridge_add_subsystem(bridge, 0, sub_sim, 0.01, 0) == 0 ||
+        reb_bridge_last_error() != REB_BRIDGE_ERROR_DUPLICATE_REGISTRATION) {
+        if (bridge) reb_bridge_free(bridge); else reb_simulation_free(main_sim);
+        reb_simulation_free(sub_sim);
+        return fail("duplicate subsystem registration should be rejected");
+    }
+    reb_bridge_free(bridge);
+    reb_simulation_free(sub_sim);
     return EXIT_SUCCESS;
 }

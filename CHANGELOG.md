@@ -2,6 +2,15 @@
 
 All notable changes to `rebound_bridge` are documented in this file.
 
+## [0.2.0] - 2026-09-02
+
+### Changed
+
+- Enforce integer outer-step durations for Bridge advances.
+- Keep experimental native and higher-order implementations local under `test/`.
+- Organize C and integration tests under `tests/unit/` and `tests/integration/`.
+- Add structured Bridge error codes and duplicate-registration checks.
+
 ## [0.1.0] - 2026-08-12
 
 Initial research release.
