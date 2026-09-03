@@ -360,9 +360,16 @@ int main(int argc, char** argv) {
 
     for (int sample = 1; sample <= samples; sample++) {
         const double target = years * (double)sample / (double)samples;
-        const double bridge_duration = target - bridge_state.main_sim->t;
+        double bridge_duration = target - bridge_state.main_sim->t;
         const double bridge_start = monotonic_seconds();
-        if (reb_bridge_advance(bridge_state.bridge, bridge_duration) != 0) {
+        /* Advance in outer-sized chunks; finish the final partial chunk with
+         * reb_bridge_step so 100 yr need not be an integer number of 7-day steps. */
+        const double outer_step = dt_outer_days / 365.25;
+        while (bridge_duration > outer_step * 1.0000000001) {
+            if (reb_bridge_step(bridge_state.bridge, outer_step) != 0) break;
+            bridge_duration -= outer_step;
+        }
+        if (bridge_duration > 0.0 && reb_bridge_step(bridge_state.bridge, bridge_duration) != 0) {
             free_bridge_state(&bridge_state);
             reb_simulation_free(whfast);
             reb_simulation_free(ias15);
