@@ -14,3 +14,9 @@ build-bench/Release/solar_system_whfast_bridge_bench.exe --years 100 --dt-outer-
 ```
 
 This measured Bridge `0.353042600 s` versus WHFast `0.975974600 s` (`2.764466951x`). The Python file is only a fixture/plot prototype and must not be used to claim EOS LF(4,2) accuracy; a state-output C driver is still needed for trajectory-error plots.
+
+Plot the measured C accuracy summary with:
+
+```sh
+python validation/solar_system_full/plot_accuracy.py --csv validation/solar_system_full/accuracy.csv --out validation/solar_system_full/results/accuracy_vs_ias15.png
+```
