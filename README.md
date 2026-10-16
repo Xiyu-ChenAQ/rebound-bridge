@@ -1,243 +1,235 @@
 # rebound_bridge
 
-`rebound_bridge` is a C99 library for hierarchical REBOUND simulations with
-resolved fast subsystems. The second-order KDK and LF4_2 methods form the
-stable public core.
+`rebound_bridge` couples REBOUND simulations that evolve on different
+timescales. It is designed for fixed, weakly coupled hierarchies, such as
+planets with compact satellite systems: each internal system takes short steps
+while the main simulation follows its orbit with longer steps. The coupling
+runs in C99 and is available through C and Python interfaces.
 
-The goal is not to replace WHFast in ordinary single-center planetary systems.
-Instead, the library applies a Bridge split when a strongly bound subsystem
-requires a smaller internal timestep than the slower outer system.  The
-practical default method is an EOS-inspired LF4_2 Bridge composition; the
-standard second-order KDK Bridge step is kept as a simple baseline.
+This is **version 1.0.0b1**, the first beta towards the 1.0 release.
+Release notes are available on [GitHub Releases](https://github.com/Xiyu-ChenAQ/rebound-bridge/releases).
 
-The library vendors the REBOUND C source tree under `rebound/src`; a normal
-CMake build does not download or locate an external REBOUND installation.
+## Python quick start
 
-## Intended Regime
+From the repository root, install with:
 
-Use WHFast directly for near-Keplerian systems with a single dominant center
-and no resolved subsystems.  Use Bridge when:
+```sh
+python -m pip install .
+```
 
-- the main system can be advanced with a relatively large outer timestep;
-- one or more bound subsystems require a much smaller internal timestep;
-- the coupling between each subsystem and the outer system is weak compared
-  with the subsystem's internal binding.
+This requires Python 3.10+ and a C compiler. The Python package pins REBOUND
+4.6.0. Then create a star, a planet and two moons:
 
-If no subsystems are registered, Bridge cross-kicks are no-ops and
-`reb_bridge_advance()` reduces to advancing the configured main REBOUND
-simulation.  With a WHFast main simulation, this is effectively WHFast with a
-small scheduler wrapper.
+```python
+import rebound_bridge
 
-## Model
+sim = rebound_bridge.Simulation()
+sim.units = ("yr", "AU", "Msun")
+sim.dt = 0.002       # Outer coupling step, in years.
+sim.dt_sub = 0.0002  # Internal step for the planet and its moons.
 
-The Bridge owns no particles by itself.  It coordinates:
+star = sim.add(name="star", m=1.0)
+planet = star.add(name="planet", m=1e-3, a=1.0)
+planet.add(name="moon1", m=1e-7, a=0.01)
+planet.add(name="moon2", m=2e-7, a=0.02, e=0.01, f=1.0)
 
-- one main REBOUND simulation containing slow bodies and one host particle per
-  resolved subsystem;
-- one or more subsystem REBOUND simulations containing resolved bodies in each
-  subsystem frame;
-- symmetric cross-kicks between the main system and resolved subsystems.
+print(sim.hierarchy())
+sim.integrate(1.0)
+physical = sim.to_rebound()
+print(physical.t, physical.N)
+```
 
-Each host particle carries its subsystem's barycentric position, velocity, and
-total mass.  The corresponding subsystem arrays contain host-relative internal
-coordinates and velocities, so their mass-weighted center-of-mass position and
-velocity must both be zero.  Individual subsystem particle masses must be
-finite and non-negative.  The subsystem total mass and matching host mass must
-be finite, strictly positive, and equal.  These registration invariants prevent
-the subsystem center-of-mass degrees of freedom from being duplicated between
-the main and subsystem simulations.
+The hierarchy follows the physical system: `sim.add(...)` adds a root body,
+and `parent.add(...)` adds a body orbiting that parent. Bridge constructs the
+centre-of-mass proxies and internal simulations automatically. The default
+coupling method is LF(4,2), with WHFast for the component integrations. The
+numbers above illustrate usage; choose steps through convergence checks for
+your own system.
 
-For a fixed-timestep REBOUND integrator such as WHFast:
+### Add bodies
 
-- `dt_outer` is the main simulation timestep and Bridge coupling interval;
-- `dt_inner` is the nominal maximum subsystem timestep;
-- `dt_outer / dt_inner` must currently be an integer ratio.
+Use familiar REBOUND particle arguments: `m`, `a`, `e`, `inc`, `Omega`, `omega`
+and `f`. Orbital elements are relative to the parent receiving `.add(...)`,
+so no `primary=` argument is needed. Angles are in radians, measured in the
+common coordinate axes. Alternatively, provide `x`, `y`, `z`, `vx`, `vy`, `vz`;
+for a child these are offsets from its parent, and for a root they are global
+coordinates. Each `name` also becomes the particle's REBOUND hash.
 
-For LF compositions, an individual drift coefficient is generally
-incommensurate with `dt_inner`.  Each fixed-integrator drift segment is split
-into equal signed substeps no larger than `dt_inner`, so a forward segment and
-its reverse use the same number of steps with opposite signs.  Adaptive
-integrators continue to integrate directly to the segment target.
+To add another planet with its own satellite, insert this before the first
+`sim.integrate(...)` call:
 
-## Public Headers
+```python
+other = star.add(name="other_planet", m=3e-4, a=2.0, e=0.02)
+other.add(name="other_moon", m=1e-8, a=0.008)
+```
 
-The only installed public header is `src/include/rebound_bridge.h`.  It is
-installed as `include/rebound_bridge.h` and exposes the stable Bridge scheduler
-API.
+Set units before adding bodies, and finish adding bodies and choosing settings
+before calling `build()`, `integrate()` or `save_to_file()`, which freeze the
+configuration. Each planet with moons shares one internal simulation with all
+its descendants; planets without descendants remain in the main system.
+Deeper nesting does not introduce additional Bridge timestep levels.
 
-Example-only helper declarations live in `examples/rebound_bridge_examples.h`
-and are not installed as public API.
+For ephemeris initial states, `sim.add_horizons(...)` and
+`parent.add_horizons(...)` query JPL Horizons through REBOUND. Set units and
+provide a date on the first query; later bodies reuse that date. See the
+[API reference](python/API.md#physical-hierarchy-simulation-and-body) for query
+arguments and coordinate conventions.
 
-## Source Layout
+### Choose timesteps and integrators
 
-- `src/bridge.c` — lifecycle, configuration, and subsystem registration.
-- `src/bridge_kick.c` — plain Bridge cross-kick kernel.
-- `src/bridge_advance.c` — order-2 KDK advance and stable dispatcher.
-- `src/bridge_eos.c` — EOS LF4_2 advance method.
-- `src/bridge_internal.h` — private to the library implementation.
-- `examples/bridge_examples.c` — convenience constructors used only by the
-  bundled examples; not compiled into the installed library.
+These optional settings also go before the first integration:
 
-## Build
+```python
+sim.method = "lf4_2"       # Or "kdk" for second-order Bridge.
+sim.integrator = "whfast"  # Main integrator and default for internal systems.
+sim.dt = 0.002            # Outer coupling step.
+sim.dt_sub = 0.0002       # Default internal step.
+planet.dt = 0.0001        # Override for the planet–moon internal system.
+planet.integrator = "ias15"
+```
 
-Default CMake build, which builds the vendored REBOUND static library and the
-Bridge static library:
+The outer step must be an integer multiple of each configured internal step.
+IAS15 adapts its steps within each component evolution. `planet.integrator`
+selects the integrator for the planet and its moons; the planet system's orbit
+around the star is advanced by the main integrator.
+Use `body.effective_integrator` to inspect the integrator of its component,
+including for a moon that shares its planet's internal simulation.
+
+`sim.integrate(t)` advances to an **absolute target time**, in the chosen time
+unit. The target must lie on the outer-step grid: after `integrate(1.0)`,
+`integrate(2.0)` advances by one more year in this example.
+
+### Read positions and orbits
+
+`sim.to_rebound()` returns an ordinary `rebound.Simulation` containing each
+physical body once, in a common inertial frame, without proxy particles. Use
+REBOUND's particle and orbit syntax on this snapshot:
+
+```python
+physical = sim.to_rebound()
+ps = physical.particles
+print(ps["moon1"].x, ps["moon1"].y, ps["moon1"].z)
+orbit = ps["moon1"].orbit(primary=ps["planet"])
+print(orbit.a, orbit.e, orbit.inc)
+```
+
+The snapshot is independent: editing it does not change the Bridge simulation.
+`sim.N` gives the physical body count, and `sim.status()` prints a brief summary.
+
+### Save and resume
+
+Save the complete hierarchy, settings and integration state:
+
+```python
+sim.save_to_file("run.rbb")
+sim.close()
+```
+
+Resume in a new Python session without rebuilding the hierarchy:
+
+```python
+import rebound_bridge
+
+with rebound_bridge.Simulation.from_file("run.rbb") as sim:
+    sim.integrate(2.0, checkpoint="run.rbb", checkpoint_interval=0.1)
+```
+
+Here the checkpoint is updated every 0.1 years of simulation time and at the
+final target. Its interval must be an integer multiple of `sim.dt`. After an
+interruption, load the last completed checkpoint with `from_file()` again.
+
+## Methods and limitations
+
+The default Python method, `lf4_2`, uses the weak residual interaction to
+reduce outer splitting error. It can show near-fourth-order convergence in
+weakly coupled systems, but is not unconditionally fourth order. The `kdk`
+method provides the standard second-order Bridge composition. Both use
+REBOUND integrators to advance the components; check convergence in both
+outer and internal steps. Once the internal motion is resolved, decreasing
+`dt_sub` alone does not remove the outer splitting error.
+
+With multiple subsystems, the default coupling resolves each subsystem
+against the other's centre-of-mass proxy. It omits interactions involving
+non-monopole structure in both subsystems; the leading omitted term is generally
+quadrupole–quadrupole. This model difference remains as timesteps decrease. Set
+`sim.coupling = "resolved"` before integration to include all member pairs
+between distinct subsystems. A single resolved subsystem has no such
+inter-subsystem approximation.
+
+WHFast and IAS15 are the usual component choices; other supported integrators
+and their restrictions are listed in the [API reference](python/API.md#numerical-and-physical-support).
+TRACE, MERCURIUS and JANUS are not yet adapted by the Python layer. Subsystem
+membership stays fixed: encounters that disrupt the hierarchy are outside the
+intended regime. For ordinary planetary systems without fast internal
+subsystems, direct REBOUND integration is usually the simpler choice.
+
+## C interface
+
+From a repository checkout or extracted source archive, build the C library
+with CMake 3.20+ and a C99 compiler. Both include the REBOUND C sources.
 
 ```sh
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-The build creates two static targets:
+The public C interface is declared in
+[rebound_bridge.h](src/include/rebound_bridge.h). Link CMake targets to
+`rebound_bridge::rebound_bridge`.
 
-- `rebound_bridge::rebound`, built from vendored `rebound/src/*.c`;
-- `rebound_bridge::rebound_bridge`, built from `src/bridge*.c` and linked
-  against `rebound_bridge::rebound`.
+## Testing
 
-Optional examples, validation tools, and tests:
-
-```sh
-cmake -S . -B build -DREBOUND_BRIDGE_BUILD_EXAMPLES=ON -DREBOUND_BRIDGE_BUILD_VALIDATION=ON -DREBOUND_BRIDGE_BUILD_TESTS=ON
-```
-
-Downstream CMake projects should link against:
-
-```cmake
-target_link_libraries(my_target PRIVATE rebound_bridge::rebound_bridge)
-```
-
-Manual MSVC build from this directory on Windows:
-
-```powershell
-mkdir build
-cl /nologo /Isrc\include /Iexamples /Irebound\src ^
-  examples\solar_system_bridge.c examples\bridge_examples.c src\*.c rebound\src\*.c ^
-  /Fo:build\ /Fe:build\solar_system_bridge.exe
-```
-
-On Unix-like systems, prefer CMake.  If building manually, use the same include
-and source sets with your C compiler and link the math library when needed.
-
-## Platform Support
-
-The core library is intended to be platform-neutral C99.  The library sources
-under `src/` do not include `windows.h` and do not require Windows APIs.
-
-Platform-specific code is limited to guarded support paths:
-
-- `src/include/rebound_bridge.h` uses `__declspec(...)` only when building a shared
-  library on Windows.
-- `validation/validation_timer.h` uses `QueryPerformanceCounter` on Windows and
-  `clock_gettime` or `timespec_get` elsewhere.
-
-## Minimal Use
-
-```c
-#include "rebound.h"
-#include "rebound_bridge.h"
-
-struct reb_bridge* bridge = reb_bridge_create(main_sim, dt_outer);
-reb_bridge_set_method(bridge, REB_BRIDGE_METHOD_EOS_LF4_2);
-reb_bridge_add_subsystem(bridge, host_index, sub_sim, dt_inner, 0);
-reb_bridge_advance(bridge, duration);
-reb_bridge_free(bridge);
-```
-
-The helper functions `reb_bridge_set_integrator_whfast()` and
-`reb_bridge_set_integrator_ias15()` configure the corresponding REBOUND
-integrator on an existing `struct reb_simulation*`.
-
-## Bridge Methods
-
-- `REB_BRIDGE_METHOD_EOS_LF4_2` — recommended practical default.  This is an
-  EOS-inspired symmetric drift-kick Bridge composition with positive drift
-  substeps and generalized order `(4,2)`.  For `H = A + epsilon B`, its global
-  splitting error over a fixed integration interval has leading structure
-  `O(epsilon h^4 + epsilon^2 h^2)`; it is not unconditionally fourth order.
-- `REB_BRIDGE_METHOD_ORDER2` — symmetric KDK Bridge (2nd order), useful as a
-  baseline and for simple validation.
-  using LF8_6_4 coefficients.  Includes negative substeps; treat as a validation
-  target rather than a default recommendation.
-  force-gradient Bridge kernel.
-
-Advanced cross-kick and corrector controls (`REB_BRIDGE_CROSS_KICK_FORCE_GRADIENT`,
-`REB_BRIDGE_CORRECTOR_COMMUTATOR_AB`, `reb_bridge_force_gradient_finite_difference_check`)
-are also declared in `rebound_bridge.h`.  Their coefficients and generality are
-still under investigation; treat them as experimental.
-
-Multiple registered subsystems use monopole--monopole coupling by default.
-`reb_bridge_set_subsystem_coupling()` can instead enable resolved pairwise
-residual kicks between subsystems.
-
-## Examples
-
-Bundled examples are enabled by `REBOUND_BRIDGE_BUILD_EXAMPLES=ON`:
-
-- `examples/earth_moon_bridge.c` uses the example convenience constructors for
-  a simple Earth-Moon Bridge demonstration.
-- `examples/jovian_laplace_bridge.c` builds a resolved
-  Jupiter-Io-Europa-Ganymede subsystem and prints Laplace-resonance diagnostics.
-- `examples/solar_system_bridge.c` builds a Sun plus eight-planet main
-  simulation with Earth-Moon and inner Galilean resolved subsystems.
-
-Example-only declarations are in `examples/rebound_bridge_examples.h` so the
-public `src/include/` directory stays focused on library API.
-
-## Validation
-
-Validation tools are enabled by `REBOUND_BRIDGE_BUILD_VALIDATION=ON`.
-
-Solar-system validation:
-
-- `validation/solar_system_ias15/compare_solar_system_ias15.c` compares Bridge
-  against a direct IAS15 reference and writes diagnostics to CSV.
-- `validation/solar_system_ias15/bench_whfast_bridge.c` benchmarks Bridge and
-  WHFast configurations.
-
-Earth-Moon / Galilean validation:
-
-- `validation/earth_moon_whfast_bridge/compare_earth_moon_whfast_bridge.c`
-  compares Bridge, WHFast, and IAS15 on a solar system with two resolved
-  subsystems (Earth-Moon and inner Galilean moons).
-
-Pluto-Charon validation:
-
-- `validation/pluto_charon_binary/compare_pluto_charon.c` validates Bridge on a
-  true binary subsystem.
-- `validation/pluto_charon_binary/bench_pluto_charon.c` benchmarks the same
-  setup.
-
-Run the test suite:
+The public test suite contains the paper experiments and their supporting
+checks. From the source root:
 
 ```sh
-cmake -S . -B build-pluto-charon -DREBOUND_BRIDGE_BUILD_TESTS=ON
-cmake --build build-pluto-charon --config Release
-ctest --test-dir build-pluto-charon -C Release --output-on-failure
+python -m pip install -r tests/paper/requirements.txt
+python tests/paper/run_all.py --unit-tests-only
+python tests/paper/run_all.py --mode smoke --output-dir build/paper-smoke
 ```
 
-The CTest suite includes forward-backward time-reversibility checks for the
-public `reb_bridge_step()` using both ORDER2 and EOS LF(4,2), including a
-resolved multi-body subsystem that catches asymmetric fractional end steps.
+The first command after installation checks the experiment and plotting scripts.
+The smoke run builds the C experiment programs, runs their registered checks,
+and exercises each experiment with shortened settings. Use a fresh output
+directory for each run. These checks verify execution and output; reproducing
+the seven manuscript figures requires the full settings in the
+[paper guide](tests/paper/README.md).
 
-## Notes
+## Platforms
 
-`rebound_bridge` is a scheduler around REBOUND simulations, not a standalone
-replacement integrator.  The usual workflow is to use WHFast or IAS15 inside
-the main and subsystem simulations while the Bridge supplies the cross-system
-operator splitting.
+Version 1.0.0b1 has been tested locally on Windows with Python 3.13
+and REBOUND 4.6.0. CI is configured for Windows, Linux and macOS with Python
+3.10 and 3.13; Linux/macOS verification is still pending.
 
-The most important accuracy knob is generally `dt_outer`, because it controls
-how often the main system and subsystems exchange perturbations.  Once a
-subsystem is internally resolved, reducing `dt_inner` further will not remove
-Bridge splitting error.
+## Documentation
 
-## License
+- [Python quick start](#python-quick-start): a first simulation, output and restart.
+- [API reference](python/API.md): supported configurations, ownership and checkpoint compatibility.
+- [C API header](src/include/rebound_bridge.h): declarations for the low-level interface.
+- [Testing](#testing) and [paper experiments](tests/paper/README.md): validation and numerical reproduction.
 
-`rebound_bridge` is licensed under GPL-3.0-or-later.  It vendors and builds
-against REBOUND, which is also GPL-3.0-or-later.
+The source distribution includes the paper experiments, their initial
+conditions and plotting scripts. Use the source archive for reproduction;
+the wheel installed by `pip` contains the library. The paper guide maps all
+seven figures to individual experiments and provides a short smoke run.
+
+The lower-level Python `Bridge` interface accepts existing REBOUND simulations;
+see the [component interface](python/API.md#component-interface-bridge-and-subsystem).
+
+## Feedback
+
+This is a beta release of `rebound_bridge`. If you run into a
+bug, find the documentation confusing, or wish it could do something it doesn't
+yet, please [open an issue](https://github.com/Xiyu-ChenAQ/rebound-bridge/issues).
+Questions and suggestions are welcome too. I'd be glad to hear what you're
+trying to simulate.
 
 ## Citation
 
-Citation metadata for the current software release is provided in
-[`CITATION.cff`](CITATION.cff).  Please cite the associated methods paper in
-addition to the software release once the paper is available.
+Software citation metadata is provided in [CITATION.cff](CITATION.cff).
+Please also cite the associated methods paper once it is available.
+
+## License
+
+`rebound_bridge` is licensed under [GPL-3.0-or-later](LICENSE). The vendored
+REBOUND code uses the same license.

@@ -1,16 +1,54 @@
+# Build products (all CMake output belongs below root build/).
 build/
 build-*/
+build_*/
 cmake-build-*/
 _deps/
-docs/
-__pycache__/
-*.py[cod]
+/install/
 *.obj
 *.o
+*.a
 *.exe
 *.dll
+*.dylib
 *.lib
 *.exp
 *.pdb
 *.ilk
-/test
+
+# Local tooling and Python caches.
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.understand-anything/
+.vs/
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+/dist/
+*.rbb
+*.tmp
+*~
+Thumbs.db
+.DS_Store
+
+# Local research, manuscript materials, and scratch work.
+/docs/
+/research/
+/work/
+
+# Release notes are published on GitHub Releases.
+/CHANGELOG.md
+
+# Documentation drafts, kept locally while being revised.
+/python/README.md
+/src/README.md
+
+# Publish the paper reproduction suite; keep other tests local.
+/tests/*
+!/tests/paper/

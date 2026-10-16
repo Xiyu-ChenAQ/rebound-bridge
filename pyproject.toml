@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77", "wheel", "rebound==4.6.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rebound-bridge"
+version = "1.0.0b1"
+description = "Multirate hierarchical integration using REBOUND simulations"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+dependencies = ["rebound==4.6.0"]
+
+[project.urls]
+Repository = "https://github.com/Xiyu-ChenAQ/rebound-bridge"
+Documentation = "https://github.com/Xiyu-ChenAQ/rebound-bridge/blob/main/README.md"
+Issues = "https://github.com/Xiyu-ChenAQ/rebound-bridge/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools]
+package-dir = {"" = "python"}
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/paper/checks"]
+cache_dir = ".cache/pytest"

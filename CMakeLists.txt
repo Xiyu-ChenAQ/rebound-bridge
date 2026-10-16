@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(
     rebound_bridge
-    VERSION 0.2.0
+    VERSION 1.0.0
     DESCRIPTION "Standalone symplectic bridge scheduler for REBOUND"
     LANGUAGES C
 )
@@ -10,9 +10,8 @@ project(
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-option(REBOUND_BRIDGE_BUILD_EXAMPLES   "Build rebound_bridge example programs"              OFF)
-option(REBOUND_BRIDGE_BUILD_VALIDATION "Build validation comparison tools"                  OFF)
-option(REBOUND_BRIDGE_BUILD_TESTS      "Build rebound_bridge tests"                         OFF)
+option(REBOUND_BRIDGE_BUILD_EXAMPLES   "Build local rebound_bridge example programs"        OFF)
+option(REBOUND_BRIDGE_BUILD_TESTS      "Build local rebound_bridge regression tests"        OFF)
 option(REBOUND_BRIDGE_INSTALL          "Install rebound_bridge targets and headers"         ON)
 set(REBOUND_BRIDGE_VENDORED_REBOUND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/rebound/src")
 
@@ -66,6 +65,7 @@ add_library(
 
     # Cross-interaction operators.
     src/bridge_kick.c
+    src/bridge_whfast.c
 
 )
 add_library(rebound_bridge::rebound_bridge ALIAS rebound_bridge)
@@ -85,67 +85,17 @@ set_target_properties(
 )
 
 if(REBOUND_BRIDGE_BUILD_EXAMPLES)
-    # bridge_examples.c provides convenience constructors (solar-system fixtures,
-    # Earth-Moon factory, etc.) that are only needed by the bundled examples.
-    # It is compiled as a private object library so it never ends up in the
-    # installed/exported rebound_bridge target.
-    add_library(rebound_bridge_examples_obj OBJECT examples/bridge_examples.c)
-    target_link_libraries(rebound_bridge_examples_obj PRIVATE rebound_bridge::rebound_bridge)
-    target_include_directories(
-        rebound_bridge_examples_obj
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/examples
-    )
-
-    set(_rebound_bridge_examples
-        earth_moon_bridge
-        jovian_laplace_bridge
-        solar_system_bridge
-    )
-
-    foreach(_example IN LISTS _rebound_bridge_examples)
-        add_executable(${_example} "examples/${_example}.c")
-        target_link_libraries(${_example}
-            PRIVATE
-                rebound_bridge::rebound_bridge
-                rebound_bridge_examples_obj
-        )
-        target_include_directories(${_example} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/examples)
-    endforeach()
-endif()
-
-if(REBOUND_BRIDGE_BUILD_VALIDATION)
-    # Shared utilities compiled once, linked to every validation executable.
-    add_library(rebound_bridge_val_common STATIC
-        validation/common/val_cli.c
-        validation/common/solar_system_fixture.c
-    )
-    target_link_libraries(rebound_bridge_val_common PUBLIC rebound_bridge::rebound_bridge)
-    target_include_directories(rebound_bridge_val_common
-        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/validation/common
-    )
-
-    add_executable(
-        solar_system_whfast_bridge_bench
-        validation/solar_system_ias15/bench_whfast_bridge.c
-    )
-    target_link_libraries(solar_system_whfast_bridge_bench PRIVATE rebound_bridge_val_common)
-
-    add_executable(
-        pluto_charon_whfast_bridge_bench
-        validation/pluto_charon_binary/bench_pluto_charon.c
-    )
-    target_link_libraries(pluto_charon_whfast_bridge_bench PRIVATE rebound_bridge_val_common)
-
-    add_executable(
-        earth_moon_whfast_bridge_compare
-        validation/earth_moon_whfast_bridge/compare_earth_moon_whfast_bridge.c
-    )
-    target_link_libraries(earth_moon_whfast_bridge_compare PRIVATE rebound_bridge_val_common)
-
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/examples/solar_system_bridge.c")
+        message(FATAL_ERROR "Local examples are not included in this source distribution. See tests/paper/README.md for the published experiments.")
+    endif()
+    add_executable(solar_system_bridge tests/examples/solar_system_bridge.c)
+    target_link_libraries(solar_system_bridge PRIVATE rebound_bridge::rebound_bridge)
 endif()
 
 if(REBOUND_BRIDGE_BUILD_TESTS)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/bridge_step_dispatch_test.c")
+        message(FATAL_ERROR "Local regression tests are not included in this source distribution. Configure tests/paper to build the published tests.")
+    endif()
     enable_testing()
 
     add_executable(
@@ -192,6 +142,19 @@ if(REBOUND_BRIDGE_BUILD_TESTS)
     )
     target_link_libraries(rebound_bridge_limiting_cases_test PRIVATE rebound_bridge::rebound_bridge)
     add_test(NAME rebound_bridge_limiting_cases_test COMMAND rebound_bridge_limiting_cases_test)
+
+    add_executable(rebound_bridge_whfast_cache_test tests/unit/bridge_whfast_cache_test.c)
+    target_link_libraries(rebound_bridge_whfast_cache_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME rebound_bridge_whfast_cache_test COMMAND rebound_bridge_whfast_cache_test)
+
+    add_executable(rebound_bridge_error_test tests/unit/bridge_error_test.c)
+    target_link_libraries(rebound_bridge_error_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME rebound_bridge_error_test COMMAND rebound_bridge_error_test)
+
+    add_executable(rebound_bridge_epoch_test tests/unit/bridge_epoch_test.c)
+    target_link_libraries(rebound_bridge_epoch_test PRIVATE rebound_bridge::rebound_bridge)
+    add_test(NAME rebound_bridge_epoch_test COMMAND rebound_bridge_epoch_test)
+    set_tests_properties(rebound_bridge_epoch_test PROPERTIES TIMEOUT 15)
 
 endif()
 

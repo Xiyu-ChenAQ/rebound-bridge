@@ -6,11 +6,21 @@
 #include "rebound_bridge.h"
 
 #include <math.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-extern enum reb_bridge_error reb_bridge_error_state;
+#if defined(_MSC_VER)
+#define REB_BRIDGE_THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__) || defined(__clang__)
+#define REB_BRIDGE_THREAD_LOCAL __thread
+#else
+#define REB_BRIDGE_THREAD_LOCAL _Thread_local
+#endif
+
+int bridge_error_code(enum reb_bridge_error code, const char* msg);
+int bridge_error_format(enum reb_bridge_error code, const char* format, ...);
 
 struct reb_bridge_vec3 {
     double x;
@@ -18,17 +28,33 @@ struct reb_bridge_vec3 {
     double z;
 };
 
+/* Last exposed Cartesian state, used to detect edits outside Bridge. */
+struct reb_bridge_cartesian_state {
+    double m, x, y, z, vx, vy, vz;
+};
+
+struct reb_bridge_whfast_cache {
+    struct reb_bridge_cartesian_state* state;
+    const struct reb_particle* jacobi;
+    int count;
+    int capacity;
+    int valid;
+};
+
 struct reb_bridge_subsystem {
     struct reb_simulation* sub_sim;
     int host_index;
     double dt_inner;
     int owns_sub_sim;
+    struct reb_bridge_whfast_cache whfast_cache;
 };
 
 struct reb_bridge {
     struct reb_simulation* main_sim;
     double dt_outer;
     int owns_main_sim;
+    int whfast_jacobi_updates;
+    struct reb_bridge_whfast_cache main_whfast_cache;
     enum reb_bridge_method method;
     enum reb_bridge_subsystem_coupling subsystem_coupling;
     struct reb_bridge_subsystem* subsystems;
@@ -93,10 +119,25 @@ static inline int bridge_reached_time(double t, double target) {
     return t >= target - bridge_time_advance_tolerance(t, target);
 }
 
+static inline int bridge_duration_on_outer_grid(double duration, double dt) {
+    if (!isfinite(duration) || duration < 0.0) return 0;
+    const double steps = duration / dt;
+    if (!isfinite(steps) || steps > 9007199254740991.0 ||
+        (duration > 0.0 && round(steps) < 1.0)) return 0;
+    /* Rounding slack must never grow into a significant fraction of a step. */
+    const double tolerance = fmin(64.0 * DBL_EPSILON * fmax(1.0, steps), 1.0 / 32.0);
+    return fabs(steps - round(steps)) <= tolerance;
+}
+
+static inline double bridge_outer_grid_time(double epoch, unsigned long long index, double dt) {
+    /* Round the product separately, matching the saved Python epoch+n*dt grid
+     * even on compilers that otherwise contract the expression into an FMA. */
+    volatile double elapsed = (double)index * dt;
+    return epoch + elapsed;
+}
+
 static inline int bridge_error(const char* msg) {
-    fprintf(stderr, "[rebound_bridge] %s\n", msg);
-    reb_bridge_error_state = REB_BRIDGE_ERROR_INTERNAL;
-    return -1;
+    return bridge_error_code(REB_BRIDGE_ERROR_INTERNAL, msg);
 }
 
 static inline int valid_particle_index(const struct reb_simulation* sim, int index) {
@@ -145,7 +186,17 @@ static inline struct reb_bridge_vec3 gravity_from_point_mass(
     return vec_scale(r, -G * source_mass * inv_r3);
 }
 
+/* Checkpoint restoration preserves the evolved coordinates exactly, including
+ * accumulated center-of-mass roundoff. Only a validated checkpoint may opt out
+ * of the initial barycenter check; all other registration checks still apply. */
+int reb_bridge_internal_add_subsystem(
+    struct reb_bridge* bridge, int host_index, struct reb_simulation* sub_sim,
+    double dt_inner, int owns_sub_sim, int check_barycenter
+);
 int reb_bridge_internal_ensure_kick_workspace(struct reb_bridge* bridge, int sub_particles, int main_particles);
+enum REB_STATUS reb_bridge_internal_integrate_component(struct reb_bridge* bridge, struct reb_simulation* sim, double target);
+void reb_bridge_internal_prepare_cross_kick(struct reb_bridge* bridge);
+void reb_bridge_internal_apply_velocity_kick(struct reb_bridge* bridge, struct reb_simulation* sim, const struct reb_bridge_vec3* acc, double dt);
 int reb_bridge_internal_check_subsystem_time_sync(struct reb_bridge* bridge, struct reb_bridge_subsystem* sub);
 int reb_bridge_internal_compute_subsystem_cross_acc(
     struct reb_bridge* bridge,
@@ -159,5 +210,9 @@ int reb_bridge_internal_integrate_all_to_target_symmetric(struct reb_bridge* bri
 void reb_bridge_internal_snap_all_times(struct reb_bridge* bridge, double time);
 int reb_bridge_internal_step_order2(struct reb_bridge* bridge, double dt);
 int reb_bridge_internal_step_eos_lf4_2(struct reb_bridge* bridge, double dt);
+int reb_bridge_internal_advance_grid(struct reb_bridge* bridge, double epoch,
+                                   unsigned long long completed, unsigned long long count);
+int reb_bridge_internal_advance_lf4_2_grid(struct reb_bridge* bridge, double epoch,
+                                         unsigned long long completed, unsigned long long count);
 
 #endif /* REBOUND_BRIDGE_INTERNAL_H */
