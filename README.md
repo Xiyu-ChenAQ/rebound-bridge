@@ -198,8 +198,10 @@ the seven manuscript figures requires the full settings in the
 ## Platforms
 
 Version 1.0.0b1 has been tested locally on Windows with Python 3.13
-and REBOUND 4.6.0. CI is configured for Windows, Linux and macOS with Python
-3.10 and 3.13; Linux/macOS verification is still pending.
+and REBOUND 4.6.0. CI has also passed on Windows, Linux and macOS with Python
+3.10 and 3.13, covering C builds, Python package installation, paper analysis
+checks and short experiments. These checks do not replace convergence tests
+for your own system.
 
 ## Documentation
 

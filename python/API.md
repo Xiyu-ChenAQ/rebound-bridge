@@ -252,8 +252,10 @@ exactly time reversible. LF(4,2) retains its component stages even without
 subsystems, so it need not reproduce a direct WHFast call's step sequence.
 
 The current dependency is **REBOUND 4.6.0** and Python **3.10+**. Installation
-from source requires a C compiler. The current verification covers Windows;
-this document does not claim Linux or macOS validation.
+from source requires a C compiler. CI has passed source builds, Python package
+installation, paper analysis checks and short experiments on Windows, Linux
+and macOS with Python 3.10 and 3.13. The full Python regression suite has also
+been tested locally on Windows with Python 3.13.
 
 ## Checkpoint compatibility
 
