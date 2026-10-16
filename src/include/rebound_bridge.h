@@ -57,6 +57,9 @@ enum reb_bridge_subsystem_coupling {
     REB_BRIDGE_SUBSYSTEM_COUPLING_RESOLVED =  1
 };
 
+/** Create a bridge with a finite positive outer timestep. The main simulation
+ * must have finite time, a finite non-negative G, and finite particle masses,
+ * positions and velocities. Particle masses must be non-negative. */
 REB_BRIDGE_API struct reb_bridge* reb_bridge_create(struct reb_simulation* main_sim, double dt_outer);
 REB_BRIDGE_API void reb_bridge_set_owns_main(struct reb_bridge* bridge, int owns_main_sim);
 REB_BRIDGE_API int reb_bridge_set_method(struct reb_bridge* bridge, enum reb_bridge_method method);
@@ -69,6 +72,10 @@ REB_BRIDGE_API void reb_bridge_free(struct reb_bridge* bridge);
  * non-negative.  The subsystem total mass and matching host mass must be
  * finite, strictly positive, and equal.  Subsystem coordinates and velocities
  * must be barycentric (zero center-of-mass position and velocity).
+ * Main and subsystem simulations must use the same G and initial time, and
+ * must be distinct objects. dt_inner must be finite and positive, with an
+ * integer dt_outer/dt_inner ratio. Registration does not transfer ownership
+ * on failure.
  * For fixed-step integrators, dt_inner is the nominal maximum substep; each
  * operator-composition segment is divided into equal steps no larger than it.
  */
@@ -90,6 +97,8 @@ REB_BRIDGE_API int reb_bridge_apply_cross_kick(struct reb_bridge* bridge, double
  * reb_bridge_set_method().  New bridges default to ORDER2.
  */
 REB_BRIDGE_API int reb_bridge_step(struct reb_bridge* bridge, double dt);
+/** Advance by a finite non-negative duration containing an integer number of
+ * outer timesteps. A zero duration is a valid no-op. */
 REB_BRIDGE_API int reb_bridge_advance(struct reb_bridge* bridge, double duration);
 REB_BRIDGE_API int reb_bridge_advance_eos_lf4_2(struct reb_bridge* bridge, double duration);
 REB_BRIDGE_API int reb_bridge_set_subsystem_coupling(
@@ -99,6 +108,14 @@ REB_BRIDGE_API int reb_bridge_set_subsystem_coupling(
 REB_BRIDGE_API enum reb_bridge_subsystem_coupling reb_bridge_get_subsystem_coupling(
     const struct reb_bridge* bridge
 );
+
+/** Enable (1, the default) or disable (0) WHFast Jacobi-state reuse and direct
+ * Jacobi velocity updates. Disabling retains Cartesian residual increments
+ * and the component's configured safe_mode. Switching modes invalidates all
+ * component caches without changing the current physical state. */
+REB_BRIDGE_API int reb_bridge_set_whfast_jacobi_updates(struct reb_bridge* bridge, int enabled);
+/** Return 0 or 1, or -1 for NULL. Like other getters, preserves error state. */
+REB_BRIDGE_API int reb_bridge_get_whfast_jacobi_updates(const struct reb_bridge* bridge);
 
 REB_BRIDGE_API int reb_bridge_set_integrator_whfast(struct reb_simulation* sim);
 REB_BRIDGE_API int reb_bridge_set_integrator_ias15(struct reb_simulation* sim);
@@ -112,7 +129,13 @@ enum reb_bridge_error {
     REB_BRIDGE_ERROR_INTERNAL = 5
 };
 
+/** Error state is local to the calling thread. Mutating public operations clear
+ * it before attempting work; getters and reb_bridge_free() preserve it.
+ * The message pointer remains valid until the next mutation or explicit clear
+ * on this thread. An empty string accompanies REB_BRIDGE_ERROR_NONE. */
 REB_BRIDGE_API enum reb_bridge_error reb_bridge_last_error(void);
+REB_BRIDGE_API const char* reb_bridge_last_error_message(void);
+REB_BRIDGE_API void reb_bridge_clear_error(void);
 
 #ifdef __cplusplus
 }

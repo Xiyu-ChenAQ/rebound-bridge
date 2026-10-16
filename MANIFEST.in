@@ -1,0 +1,21 @@
+include LICENSE README.md CITATION.cff CMakeLists.txt
+include python/API.md
+recursive-include src *.c *.h
+recursive-include python *.py
+
+# Standalone CMake build and paper reproduction belong in the source archive.
+# These files are outside the Python package and are not installed by wheels.
+recursive-include cmake *.cmake.in
+recursive-include rebound/src *.c *.h
+recursive-include tests/paper *.c *.h *.py *.md *.txt *.mplstyle
+
+# Keep local experimental outputs and Python caches out of releases.
+exclude CHANGELOG.md python/README.md src/README.md
+prune tests/common
+prune tests/examples
+prune tests/installation
+prune tests/integration
+prune tests/python
+prune tests/unit
+prune tests/paper/results
+global-exclude *.py[cod]
