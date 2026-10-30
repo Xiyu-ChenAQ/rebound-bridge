@@ -179,21 +179,10 @@ The public C interface is declared in
 
 ## Testing
 
-The public test suite contains the paper experiments and their supporting
-checks. From the source root:
-
-```sh
-python -m pip install -r tests/paper/requirements.txt
-python tests/paper/run_all.py --unit-tests-only
-python tests/paper/run_all.py --mode smoke --output-dir build/paper-smoke
-```
-
-The first command after installation checks the experiment and plotting scripts.
-The smoke run builds the C experiment programs, runs their registered checks,
-and exercises each experiment with shortened settings. Use a fresh output
-directory for each run. These checks verify execution and output; reproducing
-the seven manuscript figures requires the full settings in the
-[paper guide](tests/paper/README.md).
+The [paper guide](tests/paper/README.md) explains how to run the tests and
+reproduce the paper's figures, with shorter runs to check your setup first.
+Use a repository checkout or source archive; the Python wheel contains only
+the library.
 
 ## Platforms
 
@@ -209,11 +198,6 @@ for your own system.
 - [API reference](python/API.md): supported configurations, ownership and checkpoint compatibility.
 - [C API header](src/include/rebound_bridge.h): declarations for the low-level interface.
 - [Testing](#testing) and [paper experiments](tests/paper/README.md): validation and numerical reproduction.
-
-The source distribution includes the paper experiments, their initial
-conditions and plotting scripts. Use the source archive for reproduction;
-the wheel installed by `pip` contains the library. The paper guide maps all
-seven figures to individual experiments and provides a short smoke run.
 
 The lower-level Python `Bridge` interface accepts existing REBOUND simulations;
 see the [component interface](python/API.md#component-interface-bridge-and-subsystem).
